@@ -14,6 +14,7 @@ from services.nutrition_ai import estimate_nutrition
 from dependencies import get_db, get_or_create_default_user
 from crud import (
     create_meal,
+    delete_meal,
     delete_todays_meals,
     get_todays_meals,
 )
@@ -135,4 +136,27 @@ def clear_todays_meals(
     return {
         "message": "Today's meals cleared.",
         "deleted_meals": deleted_count,
+    }
+@router.delete("/{meal_id}")
+def remove_meal(
+    meal_id: int,
+    db: Session = Depends(get_db),
+) -> dict:
+    user = get_or_create_default_user(db)
+
+    deleted = delete_meal(
+        db=db,
+        user=user,
+        meal_id=meal_id,
+    )
+
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail="Meal not found.",
+        )
+
+    return {
+        "message": "Meal deleted.",
+        "meal_id": meal_id,
     }

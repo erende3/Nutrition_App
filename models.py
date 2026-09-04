@@ -15,6 +15,36 @@ class User(Base):
         index=True,
     )
 
+    age: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    sex: Mapped[str | None] = mapped_column(
+        String,
+        nullable=True,
+    )
+
+    height_cm: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+    )
+
+    weight_kg: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+    )
+
+    activity_level: Mapped[str | None] = mapped_column(
+        String,
+        nullable=True,
+    )
+
+    goal: Mapped[str | None] = mapped_column(
+        String,
+        nullable=True,
+    )
+
     daily_calorie_goal: Mapped[int] = mapped_column(
         Integer,
         default=2200,
