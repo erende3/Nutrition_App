@@ -1,6 +1,7 @@
 import SwiftUI
+import UIKit
 
-struct ContentView: View {
+struct DashboardView: View {
     @State private var mealText = ""
     @State private var lastResult: NutritionEstimate?
 
@@ -10,6 +11,8 @@ struct ContentView: View {
 
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var selectedImage: UIImage?
+    @State private var showingCamera = false
 
     var body: some View {
         ZStack {
@@ -71,6 +74,53 @@ struct ContentView: View {
                         .clipShape(
                             RoundedRectangle(cornerRadius: 16)
                         )
+                        
+                        Button {
+                            showingCamera = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "camera.fill")
+                                Text("Take Photo")
+                                    .fontWeight(.semibold)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.white)
+                        .background(Color.white.opacity(0.10))
+                        .clipShape(
+                            RoundedRectangle(cornerRadius: 16)
+                        )
+                        if let selectedImage {
+                            VStack(spacing: 10) {
+                                Image(uiImage: selectedImage)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(height: 180)
+                                    .frame(maxWidth: .infinity)
+                                    .clipShape(
+                                        RoundedRectangle(cornerRadius: 16)
+                                    )
+                                    .clipped()
+                                
+                                HStack {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(.green)
+                                    
+                                    Text("Photo ready to estimate")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                    
+                                    Spacer()
+                                    
+                                    Button("Remove") {
+                                        self.selectedImage = nil
+                                    }
+                                    .font(.subheadline)
+                                }
+                            }
+                        }
 
                         Button {
                             estimateMeal()
@@ -106,8 +156,12 @@ struct ContentView: View {
                                     in: .whitespacesAndNewlines
                                 )
                                 .isEmpty
+                                && selectedImage == nil
                             || isLoading
                         )
+                        .sheet(isPresented: $showingCamera) {
+                            CameraPicker(image: $selectedImage)
+                        }
                     }
 
                     if let lastResult {
@@ -161,19 +215,33 @@ struct ContentView: View {
     }
 
     private func estimateMeal() {
-        let submittedMeal = mealText
+        
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
+        let submittedMeal = mealText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let imageData = selectedImage?.jpegData(compressionQuality: 0.8)
+
 
         isLoading = true
         errorMessage = nil
 
         Task {
             do {
-                let result = try await NutritionAPI.shared
-                    .estimateMeal(message: submittedMeal)
-
+                let result = try await NutritionAPI.shared.estimateMeal(
+                    message: submittedMeal.isEmpty
+                        ? "Estimate this meal from the image."
+                        : submittedMeal,
+                    imageData: imageData
+                )
                 lastResult = result
 
                 mealText = ""
+                selectedImage = nil
 
                 await refreshDailySummary()
 
@@ -291,6 +359,18 @@ struct StatCard: View {
 }
 
 
-#Preview {
-    ContentView()
+struct ContentView: View {
+    var body: some View {
+        TabView {
+            DashboardView()
+                .tabItem {
+                    Label("Dashboard", systemImage: "house.fill")
+                }
+
+            MealHistoryView()
+                .tabItem {
+                    Label("History", systemImage: "clock.fill")
+                }
+        }
+    }
 }

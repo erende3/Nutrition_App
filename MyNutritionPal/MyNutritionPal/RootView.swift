@@ -12,6 +12,7 @@ struct RootView: View {
     @State private var profile: UserProfile?
     @State private var isLoading = true
     @State private var errorMessage: String?
+    @State private var forceOnboarding = true
 
     var body: some View {
         Group {
@@ -28,7 +29,17 @@ struct RootView: View {
                 }
                 .padding()
             } else if let profile {
-                OnboardingView()
+                if profile.onboardingComplete && !forceOnboarding{
+                    ContentView()
+                } else {
+                    OnboardingView {
+                        forceOnboarding = false
+                        
+                        Task {
+                            await loadProfile()
+                        }
+                    }
+                }
             }
         }
         .task {

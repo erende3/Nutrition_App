@@ -40,6 +40,7 @@ final class OnboardingViewModel: ObservableObject {
     }
 
     func submitOnboarding() async {
+        validateInputs()
         isLoading = true
         errorMessage = nil
 
@@ -62,5 +63,13 @@ final class OnboardingViewModel: ObservableObject {
         }
 
         isLoading = false
+    }
+    func validateInputs() {
+        weightLb = min(max(weightLb, 70), 700)
+
+        heightFeet = min(max(heightFeet, 3), 8)
+        heightInches = min(max(heightInches, 0), 11)
+
+        age = min(max(age, 13), 120)
     }
 }

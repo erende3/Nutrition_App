@@ -11,8 +11,11 @@ import Foundation
 final class NutritionAPI {
     static let shared = NutritionAPI()
 
-    private let baseURL = "http://127.0.0.1:8000"
-    func estimateMeal(message: String) async throws -> NutritionEstimate {
+    private let baseURL = "http://172.20.10.9:8000"
+    func estimateMeal(
+        message: String,
+        imageData: Data? = nil
+    ) async throws -> NutritionEstimate {
         guard let url = URL(string: "\(baseURL)/meals/estimate") else {
             throw URLError(.badURL)
         }
@@ -31,6 +34,7 @@ final class NutritionAPI {
         var body = Data()
 
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        
 
         body.append(
             "Content-Disposition: form-data; name=\"message\"\r\n\r\n"
@@ -38,6 +42,23 @@ final class NutritionAPI {
         )
 
         body.append("\(message)\r\n".data(using: .utf8)!)
+        
+        if let imageData {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+
+            body.append(
+                "Content-Disposition: form-data; name=\"image\"; filename=\"meal.jpg\"\r\n"
+                    .data(using: .utf8)!
+            )
+
+            body.append(
+                "Content-Type: image/jpeg\r\n\r\n"
+                    .data(using: .utf8)!
+            )
+
+            body.append(imageData)
+            body.append("\r\n".data(using: .utf8)!)
+        }
 
         body.append("--\(boundary)--\r\n".data(using: .utf8)!)
 
@@ -73,6 +94,37 @@ final class NutritionAPI {
             from: data
         )
     }
+    
+    func getTodaysMeals() async throws -> [Meal] {
+        guard let url = URL(string: "\(baseURL)/meals/today") else {
+            throw URLError(.badURL)
+        }
+
+        let (data, response) = try await URLSession.shared.data(from: url)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              200..<300 ~= httpResponse.statusCode else {
+            throw URLError(.badServerResponse)
+        }
+
+        return try JSONDecoder().decode([Meal].self, from: data)
+    }
+    func deleteMeal(id: Int) async throws {
+        guard let url = URL(string: "\(baseURL)/meals/\(id)") else {
+            throw URLError(.badURL)
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              200..<300 ~= httpResponse.statusCode else {
+            throw URLError(.badServerResponse)
+        }
+    }
+    
     func getUserProfile() async throws -> UserProfile {
         guard let url = URL(string: "\(baseURL)/users/profile") else {
             throw URLError(.badURL)

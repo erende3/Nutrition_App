@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct OnboardingView: View {
+    let onComplete: () -> Void
+    
     @StateObject private var viewModel = OnboardingViewModel()
     @State private var step = 0
 
@@ -68,7 +70,18 @@ struct OnboardingView: View {
                     .foregroundStyle(.white)
                     .clipShape(RoundedRectangle(cornerRadius: 14))
                     .disabled(viewModel.isLoading)
+                
+            } else {
+                Button {
+                    onComplete()
+                } label: {
+                    Text("Continue to Dashboard")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
+                        .padding()
                 }
+                .buttonStyle(.borderedProminent)
+            }
 
                 if let errorMessage = viewModel.errorMessage {
                     Text(errorMessage)
@@ -189,12 +202,29 @@ struct OnboardingView: View {
                 Text("Weight")
                     .fontWeight(.semibold)
 
-                Stepper(
-                    String(format: "%.1f lb", viewModel.weightLb),
-                    value: $viewModel.weightLb,
-                    in: 70...700,
-                    step: 0.5
-                )
+                HStack {
+                    TextField(
+                        "Weight",
+                        value: $viewModel.weightLb,
+                        format: .number.precision(.fractionLength(0...1))
+                    )
+                    .onChange(of: viewModel.weightLb) { _, newValue in
+                        if newValue < 1 {
+                            viewModel.weightLb = 1
+                        }
+
+                        if newValue > 700 {
+                            viewModel.weightLb = 700
+                        }
+                    }
+                    .keyboardType(.decimalPad)
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                    .multilineTextAlignment(.center)
+
+                    Text("lb")
+                        .foregroundStyle(.secondary)
+                }
                 .padding()
                 .background(cardBackground)
                 .clipShape(RoundedRectangle(cornerRadius: 14))
