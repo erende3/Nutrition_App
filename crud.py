@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy.orm import Session
 
@@ -47,6 +47,24 @@ def get_todays_meals(
         meal
         for meal in meals
         if meal.created_at.date() == today
+    ]
+
+def get_meals_by_date(
+    db: Session,
+    user: User,
+    target_date: date,
+):
+    meals = (
+        db.query(Meal)
+        .filter(Meal.user_id == user.id)
+        .order_by(Meal.created_at.desc())
+        .all()
+    )
+
+    return [
+        meal
+        for meal in meals
+        if meal.created_at.date() == target_date
     ]
 
 def delete_todays_meals(

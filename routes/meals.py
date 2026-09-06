@@ -17,6 +17,7 @@ from crud import (
     delete_meal,
     delete_todays_meals,
     get_todays_meals,
+    get_meals_by_date,
 )
 
 router = APIRouter(
@@ -160,3 +161,15 @@ def remove_meal(
         "message": "Meal deleted.",
         "meal_id": meal_id,
     }
+@router.get("/date/{meal_date}")
+def get_meals_for_date(
+    meal_date: date,
+    db: Session = Depends(get_db),
+):
+    user = get_or_create_default_user(db)
+
+    return get_meals_by_date(
+        db=db,
+        user=user,
+        target_date=meal_date,
+    )
