@@ -13,6 +13,7 @@ struct DashboardView: View {
     @State private var errorMessage: String?
     @State private var selectedImage: UIImage?
     @State private var showingCamera = false
+    @FocusState private var isMealFieldFocused: Bool
 
     var body: some View {
         ZStack {
@@ -32,7 +33,15 @@ struct DashboardView: View {
                             .font(.system(size: 36, weight: .bold))
                             .foregroundStyle(.white)
                     }
+                    .toolbar {
+                        ToolbarItemGroup(placement: .keyboard) {
+                            Spacer()
 
+                            Button("Done") {
+                                isMealFieldFocused = false
+                            }
+                        }
+                    }
                     CalorieRing(
                         consumed: Double(caloriesConsumed),
                         goal: Double(dailyGoal)
@@ -66,6 +75,7 @@ struct DashboardView: View {
                             text: $mealText,
                             axis: .vertical
                         )
+                        .focused($isMealFieldFocused)
                         .padding()
                         .foregroundStyle(.white)
                         .background(
