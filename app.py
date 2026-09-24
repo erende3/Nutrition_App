@@ -1,8 +1,24 @@
+print("1 - starting app.py")
 from dotenv import load_dotenv
+print("2 - dotenv imported")
 from fastapi import FastAPI
+print("3 - fastapi imported")
+
 
 from database import Base, engine
-from routes import meals, summary, users
+print("4 - database imported")
+
+print("5a - importing meals")
+from routes import meals
+print("5b - meals imported")
+
+print("5c - importing summary")
+from routes import summary
+print("5d - summary imported")
+
+print("5e - importing users")
+from routes import users
+print("5f - users imported")
 
 load_dotenv()
 

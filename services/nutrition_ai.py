@@ -1,15 +1,6 @@
 import base64
 import os
-
-from openai import OpenAI
-
 from schemas import NutritionEstimate
-
-
-client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY")
-)
-
 
 def encode_image(
     image_bytes: bytes,
@@ -32,6 +23,12 @@ def estimate_nutrition(
     image_content_type: str | None = None,
 ) -> NutritionEstimate:
     """Estimate nutrition from meal text and an optional image."""
+
+    from openai import OpenAI
+
+    client = OpenAI(
+        api_key=os.getenv("OPENAI_API_KEY")
+    )
 
     content: list[dict] = [
         {
