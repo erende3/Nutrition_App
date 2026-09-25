@@ -242,7 +242,7 @@ struct DashboardView: View {
 
         Task {
             do {
-                let result = try await NutritionAPI.shared.estimateMeal(
+                let result = try await APIClient.shared.estimateMeal(
                     message: submittedMeal.isEmpty
                         ? "Estimate this meal from the image."
                         : submittedMeal,
@@ -265,7 +265,7 @@ struct DashboardView: View {
 
     private func refreshDailySummary() async {
         do {
-            let summary = try await NutritionAPI.shared
+            let summary = try await APIClient.shared
                 .getDailySummary()
 
             dailyGoal = summary.daily_goal

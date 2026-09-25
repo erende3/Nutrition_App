@@ -46,7 +46,7 @@ struct RootView: View {
 
     private func loadProfile() async {
         do {
-            profile = try await NutritionAPI.shared.getUserProfile()
+            profile = try await APIClient.shared.getUserProfile()
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription

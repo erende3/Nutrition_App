@@ -41,7 +41,7 @@ final class OnboardingViewModel: ObservableObject {
         errorMessage = nil
 
         do {
-            let result = try await NutritionAPI.shared.submitOnboarding(
+            let result = try await APIClient.shared.submitOnboarding(
                 age: age,
                 sex: sex,
                 heightCm: heightCm,

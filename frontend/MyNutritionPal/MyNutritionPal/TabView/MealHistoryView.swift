@@ -75,7 +75,7 @@ struct MealHistoryView: View {
         errorMessage = nil
 
         do {
-            meals = try await NutritionAPI.shared.getTodaysMeals()
+            meals = try await APIClient.shared.getTodaysMeals()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -85,7 +85,7 @@ struct MealHistoryView: View {
 
     private func deleteMeal(_ meal: Meal) async {
         do {
-            try await NutritionAPI.shared.deleteMeal(id: meal.id)
+            try await APIClient.shared.deleteMeal(id: meal.id)
 
             meals.removeAll {
                 $0.id == meal.id
