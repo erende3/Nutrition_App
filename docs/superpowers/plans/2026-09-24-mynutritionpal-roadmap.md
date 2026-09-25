@@ -76,6 +76,16 @@ A behavior-preserving milestone between Phase 0 and Phase 1. It finished the one
 
 **Still in Phase 3:** `/v1`, the day endpoint, the error envelope with codes, splitting the LLM schema from the API response, and AI metadata on meals.
 
+## Milestone 0.4: backend correctness (added 2026-09-25)
+
+This completes Phase 1 items 1–3. Plan: `docs/superpowers/plans/2026-09-25-milestone-0.4-backend-correctness.md`.
+
+- **Item 1, migrations.** Alembic, with revisions `0001_baseline`, `0002_goal_positive_check` and `0003_meal_local_date`. `python app.py` migrates before serving and refuses to serve if migration fails. The development database was stamped at the baseline and migrated in place, with a backup.
+- **Item 2, day handling.** Meals store `local_date`, backfilled from `created_at` in `DEFAULT_TIMEZONE`. "Today" uses the optional `X-Timezone` header or the server default, and day queries filter on `(user_id, local_date)` in SQL. `created_at` keeps its name and naive-UTC format.
+- **Item 3, the goal invariant.** A stored goal is always positive: `CHECK (daily_calorie_goal > 0)`, a summary guard, and a fallback to the default 2200 with `goal_adjusted: true` when the formula gives 0 or less. **Nutrition-policy bounds (minimums, maximums, sex-specific floors) are deliberately not decided.** That's a product decision, to make at the latest before the Phase 5 goal and macro features.
+- **Still open from Phase 1:** item 6, the upload size limit, which waits for Phase 2's image downscaling.
+- **Moved to Phase 2:** iOS sending `X-Timezone`, and showing a notice when `goal_adjusted` is true.
+
 ## Phase 1: Backend correctness
 
 **Accomplish**
