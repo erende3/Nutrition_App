@@ -6,7 +6,6 @@ load_dotenv()
 
 from fastapi import FastAPI
 
-from database import Base, engine
 from routes import meals
 from routes import summary
 from routes import users
@@ -21,9 +20,6 @@ app.include_router(summary.router)
 app.include_router(users.router)
 
 
-Base.metadata.create_all(bind=engine)
-
-
 @app.get("/")
 def home() -> HomeResponse:
     return HomeResponse(
@@ -32,10 +28,30 @@ def home() -> HomeResponse:
     )
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Migrate the database to the latest revision, then serve.
+
+    If the migration fails, exit non-zero without starting the server, so it
+    never serves against an outdated or partly migrated schema.
+    """
+
+    import sys
+    import traceback
     from pathlib import Path
 
     import uvicorn
+
+    import db_migrations
+
+    try:
+        db_migrations.upgrade_to_head()
+    except Exception as exc:
+        traceback.print_exc()
+        print(
+            f"\nDatabase migration failed: {exc}\nThe server was not started.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from exc
 
     uvicorn.run(
         "app:app",
@@ -46,3 +62,7 @@ if __name__ == "__main__":
         # absolute paths. Needs watchfiles (requirements-dev.txt).
         reload_excludes=[str(Path(__file__).resolve().parent / ".venv")],
     )
+
+
+if __name__ == "__main__":
+    main()

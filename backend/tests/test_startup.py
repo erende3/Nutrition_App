@@ -1,5 +1,6 @@
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 import warnings
@@ -42,6 +43,21 @@ def test_importing_app_prints_nothing(tmp_path):
 
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
+
+
+def test_importing_app_creates_no_tables_and_runs_no_migrations(tmp_path):
+    database = tmp_path / "import-only.db"
+    env = {**os.environ, "DATABASE_URL": f"sqlite:///{database}"}
+
+    result = run_python("import app", cwd=BACKEND, env=env)
+
+    assert result.returncode == 0, result.stderr
+    if database.exists():
+        with sqlite3.connect(database) as connection:
+            tables = connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        assert tables == []
 
 
 def test_database_url_can_be_set_in_dotenv(tmp_path):
