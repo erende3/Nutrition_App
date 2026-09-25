@@ -1,4 +1,4 @@
-import os
+import logging
 from datetime import date
 from typing import Optional
 
@@ -15,11 +15,27 @@ from crud import (
 from dependencies import get_db, get_or_create_default_user
 from schemas import NutritionEstimate
 from services.meals import log_meal
+from services.nutrition_ai import (
+    EstimatorFailed,
+    EstimatorNotConfigured,
+    EstimatorTimeout,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/meals",
     tags=["meals"],
 )
+
+# Status and client-facing message per failure. Exception text is logged,
+# never returned.
+ESTIMATE_ERRORS = {
+    EstimatorNotConfigured: (503, "Meal estimation is not available right now."),
+    EstimatorTimeout: (504, "Meal estimation timed out. Please try again."),
+    EstimatorFailed: (502, "Meal estimation failed. Please try again."),
+}
+UNEXPECTED_ESTIMATE_ERROR = (500, "Something went wrong while logging the meal.")
 
 @router.get("/today")
 def meals_today(
@@ -55,12 +71,6 @@ async def estimate_meal(
     Estimate calories and macros from a meal description and optional image,
     then save the resulting meal to the database.
     """
-
-    if not os.environ.get("OPENAI_API_KEY"):
-        raise HTTPException(
-            status_code=500,
-            detail="The OPENAI_API_KEY environment variable is not set.",
-        )
 
     image_bytes = None
     image_content_type = None
@@ -102,13 +112,15 @@ async def estimate_meal(
             image_content_type=image_content_type,
         )
 
-    except HTTPException:
-        raise
-
     except Exception as exc:
+        logger.exception("Meal estimate failed")
+        status_code, detail = ESTIMATE_ERRORS.get(
+            type(exc),
+            UNEXPECTED_ESTIMATE_ERROR,
+        )
         raise HTTPException(
-            status_code=500,
-            detail=f"Nutrition estimation failed: {exc}",
+            status_code=status_code,
+            detail=detail,
         ) from exc
 
 @router.delete("/today")

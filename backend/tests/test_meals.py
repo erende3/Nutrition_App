@@ -6,8 +6,10 @@ from zoneinfo import ZoneInfo
 import pytest
 
 import services.meals
+import services.nutrition_ai
 from database import SessionLocal
 from models import Meal
+from services.nutrition_ai import EstimatorFailed, EstimatorNotConfigured, EstimatorTimeout
 
 
 def log_meal(client, message="chicken and rice", files=None):
@@ -72,24 +74,71 @@ def test_estimate_rejects_empty_image(client, fake_estimator):
     assert fake_estimator == []
 
 
-def test_estimate_without_api_key_returns_500_and_saves_nothing(client, monkeypatch):
-    monkeypatch.delenv("OPENAI_API_KEY")
-
-    response = log_meal(client)
-
-    assert response.status_code == 500
-    assert client.get("/meals/today").json() == []
+SENTINEL = "internal-detail-sentinel-7f3a"
 
 
-def test_estimator_failure_returns_500_and_saves_nothing(client, monkeypatch):
+def logged_exception_mentions(caplog, text):
+    return any(
+        record.exc_info and text in str(record.exc_info[1])
+        for record in caplog.records
+    )
+
+
+@pytest.mark.parametrize(
+    "error, status",
+    [
+        (EstimatorNotConfigured(SENTINEL), 503),
+        (EstimatorTimeout(SENTINEL), 504),
+        (EstimatorFailed(SENTINEL), 502),
+        (RuntimeError(SENTINEL), 500),
+    ],
+    ids=["not-configured", "timeout", "ai-failure", "unexpected"],
+)
+def test_estimate_failure_maps_status_hides_details_and_saves_nothing(
+    client, monkeypatch, caplog, error, status
+):
     def failing_estimate(**kwargs):
-        raise RuntimeError("model unavailable")
+        raise error
 
     monkeypatch.setattr(services.meals, "estimate_nutrition", failing_estimate)
 
     response = log_meal(client)
 
+    assert response.status_code == status
+    assert set(response.json()) == {"detail"}
+    assert isinstance(response.json()["detail"], str)
+    assert SENTINEL not in response.text
+    assert logged_exception_mentions(caplog, SENTINEL)
+    assert client.get("/meals/today").json() == []
+
+
+def test_meal_save_failure_returns_generic_500_and_saves_nothing(
+    client, monkeypatch, caplog
+):
+    def failing_create_meal(**kwargs):
+        raise RuntimeError(SENTINEL)
+
+    monkeypatch.setattr(services.meals, "create_meal", failing_create_meal)
+
+    response = log_meal(client)
+
     assert response.status_code == 500
+    assert SENTINEL not in response.text
+    assert logged_exception_mentions(caplog, SENTINEL)
+    assert client.get("/meals/today").json() == []
+
+
+def test_estimate_without_api_key_returns_503_and_saves_nothing(client, monkeypatch):
+    # Use the real estimator so its own key check runs; it fails before any client.
+    monkeypatch.setattr(
+        services.meals, "estimate_nutrition", services.nutrition_ai.estimate_nutrition
+    )
+    monkeypatch.delenv("OPENAI_API_KEY")
+
+    response = log_meal(client)
+
+    assert response.status_code == 503
+    assert "OPENAI_API_KEY" not in response.text
     assert client.get("/meals/today").json() == []
 
 
