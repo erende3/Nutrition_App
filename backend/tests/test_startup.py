@@ -42,3 +42,26 @@ def test_importing_app_prints_nothing(tmp_path):
 
     assert result.returncode == 0, result.stderr
     assert result.stdout == ""
+
+
+def test_database_url_can_be_set_in_dotenv(tmp_path):
+    for source in BACKEND.glob("*.py"):
+        shutil.copy(source, tmp_path / source.name)
+    for package in ("routes", "services"):
+        shutil.copytree(
+            BACKEND / package,
+            tmp_path / package,
+            ignore=shutil.ignore_patterns("__pycache__"),
+        )
+    dotenv_url = f"sqlite:///{tmp_path / 'from_dotenv.db'}"
+    (tmp_path / ".env").write_text(f"DATABASE_URL={dotenv_url}\n")
+    env = {key: value for key, value in os.environ.items() if key != "DATABASE_URL"}
+
+    result = run_python(
+        "import app, database; print(database.engine.url.render_as_string())",
+        cwd=tmp_path,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines()[-1] == dotenv_url

@@ -28,7 +28,7 @@ Tests use a temporary database and a fake nutrition estimator. They never call O
 | Variable | Required | Default | Purpose |
 | --- | --- | --- | --- |
 | `OPENAI_API_KEY` | For meal estimates | none | OpenAI access. Put it in `backend/.env`. |
-| `DATABASE_URL` | No | `sqlite:///./nutrition.db` | SQLAlchemy database URL. Set it in the shell environment. The path is relative to the directory you start the server from. |
+| `DATABASE_URL` | No | `sqlite:///./nutrition.db` | SQLAlchemy database URL. Set it in `backend/.env` or in the shell; a shell value wins. The default path is relative to the directory you start the server from. |
 
 ## iOS app
 

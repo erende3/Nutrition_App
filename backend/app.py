@@ -1,12 +1,15 @@
 from dotenv import load_dotenv
+
+# Load .env before importing modules that read configuration at import time
+# (database.py reads DATABASE_URL). Existing environment variables win.
+load_dotenv()
+
 from fastapi import FastAPI
 
 from database import Base, engine
 from routes import meals
 from routes import summary
 from routes import users
-
-load_dotenv()
 
 app = FastAPI(
     title="AI Nutrition Estimator",
