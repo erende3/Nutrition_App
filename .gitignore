@@ -82,3 +82,4 @@ playground.xcworkspace
 *.swp
 *.swo
 *~
+graphify-out/
