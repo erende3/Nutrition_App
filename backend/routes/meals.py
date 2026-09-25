@@ -13,7 +13,12 @@ from crud import (
     get_todays_meals,
 )
 from dependencies import get_db, get_or_create_default_user
-from schemas import NutritionEstimate
+from schemas import (
+    ClearMealsResponse,
+    DeleteMealResponse,
+    MealResponse,
+    NutritionEstimate,
+)
 from services.meals import log_meal
 from services.nutrition_ai import (
     EstimatorFailed,
@@ -37,29 +42,16 @@ ESTIMATE_ERRORS = {
 }
 UNEXPECTED_ESTIMATE_ERROR = (500, "Something went wrong while logging the meal.")
 
-@router.get("/today")
+@router.get("/today", response_model=list[MealResponse])
 def meals_today(
     db: Session = Depends(get_db),
-) -> list[dict]:
+):
     user = get_or_create_default_user(db)
 
-    todays_meals = get_todays_meals(
+    return get_todays_meals(
         db=db,
         user=user,
     )
-
-    return [
-        {
-            "id": meal.id,
-            "meal_name": meal.meal_name,
-            "calories": meal.calories,
-            "protein_g": meal.protein_g,
-            "carbohydrates_g": meal.carbohydrates_g,
-            "fat_g": meal.fat_g,
-            "created_at": meal.created_at.isoformat(),
-        }
-        for meal in todays_meals
-    ]
 
 @router.post("/estimate", response_model=NutritionEstimate)
 async def estimate_meal(
@@ -126,7 +118,7 @@ async def estimate_meal(
 @router.delete("/today")
 def clear_todays_meals(
     db: Session = Depends(get_db),
-) -> dict:
+) -> ClearMealsResponse:
     user = get_or_create_default_user(db)
 
     deleted_count = delete_todays_meals(
@@ -134,15 +126,15 @@ def clear_todays_meals(
         user=user,
     )
 
-    return {
-        "message": "Today's meals cleared.",
-        "deleted_meals": deleted_count,
-    }
+    return ClearMealsResponse(
+        message="Today's meals cleared.",
+        deleted_meals=deleted_count,
+    )
 @router.delete("/{meal_id}")
 def remove_meal(
     meal_id: int,
     db: Session = Depends(get_db),
-) -> dict:
+) -> DeleteMealResponse:
     user = get_or_create_default_user(db)
 
     deleted = delete_meal(
@@ -157,11 +149,11 @@ def remove_meal(
             detail="Meal not found.",
         )
 
-    return {
-        "message": "Meal deleted.",
-        "meal_id": meal_id,
-    }
-@router.get("/date/{meal_date}")
+    return DeleteMealResponse(
+        message="Meal deleted.",
+        meal_id=meal_id,
+    )
+@router.get("/date/{meal_date}", response_model=list[MealResponse])
 def get_meals_for_date(
     meal_date: date,
     db: Session = Depends(get_db),

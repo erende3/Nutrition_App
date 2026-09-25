@@ -1,5 +1,7 @@
-from pydantic import BaseModel, Field
+from datetime import datetime
 from enum import Enum
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class NutritionEstimate(BaseModel):
@@ -97,3 +99,42 @@ class UserProfileResponse(BaseModel):
     goal: str | None
     daily_calorie_goal: int
     onboarding_complete: bool
+
+class MealResponse(BaseModel):
+    """A saved meal, as returned by the meal list endpoints."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    meal_name: str
+    calories: int
+    protein_g: float
+    carbohydrates_g: float
+    fat_g: float
+    confidence: float
+    calorie_low: int
+    calorie_high: int
+    created_at: datetime
+
+
+class DailySummaryResponse(BaseModel):
+    date: str
+    daily_goal: int
+    calories_consumed: int
+    calories_remaining: int
+    percentage: float
+
+
+class ClearMealsResponse(BaseModel):
+    message: str
+    deleted_meals: int
+
+
+class DeleteMealResponse(BaseModel):
+    message: str
+    meal_id: int
+
+
+class HomeResponse(BaseModel):
+    message: str
+    documentation: str

@@ -10,6 +10,7 @@ from database import Base, engine
 from routes import meals
 from routes import summary
 from routes import users
+from schemas import HomeResponse
 
 app = FastAPI(
     title="AI Nutrition Estimator",
@@ -24,11 +25,11 @@ Base.metadata.create_all(bind=engine)
 
 
 @app.get("/")
-def home() -> dict[str, str]:
-    return {
-        "message": "Nutrition estimator is running.",
-        "documentation": "/docs",
-    }
+def home() -> HomeResponse:
+    return HomeResponse(
+        message="Nutrition estimator is running.",
+        documentation="/docs",
+    )
 
 
 if __name__ == "__main__":

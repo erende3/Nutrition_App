@@ -67,22 +67,18 @@ ESTIMATE = {
     "assumptions": LIST_OF_STR,
 }
 
-MEAL_TODAY = {
+# Shared by /meals/today and /meals/date/{d} (decision D3; no user_id).
+MEAL = {
     "id": INT,
     "meal_name": STR,
     "calories": INT,
     "protein_g": NUMBER,
     "carbohydrates_g": NUMBER,
     "fat_g": NUMBER,
-    "created_at": STR,
-}
-
-MEAL_BY_DATE = {
-    **MEAL_TODAY,
-    "user_id": INT,
     "confidence": NUMBER,
     "calorie_low": INT,
     "calorie_high": INT,
+    "created_at": STR,
 }
 
 SUMMARY = {
@@ -189,7 +185,7 @@ def test_meals_today_shape(client):
     meals = client.get("/meals/today").json()
 
     assert len(meals) == 1
-    assert_shape(meals[0], MEAL_TODAY)
+    assert_shape(meals[0], MEAL)
 
 
 def test_meals_by_date_shape(client):
@@ -198,7 +194,7 @@ def test_meals_by_date_shape(client):
     meals = client.get(f"/meals/date/{date.today().isoformat()}").json()
 
     assert len(meals) == 1
-    assert_shape(meals[0], MEAL_BY_DATE)
+    assert_shape(meals[0], MEAL)
 
 
 def test_created_at_is_naive_iso_of_stored_value(client):
@@ -293,3 +289,39 @@ def test_responses_carry_every_field_the_ios_app_decodes(client):
         client.post("/users/onboarding", json=PROFILE_INPUT).json(),
         SWIFT_ONBOARDING_RESULT,
     )
+
+
+# Every operation's 200 response, as a named schema ("list[X]" for arrays).
+EXPECTED_RESPONSE_MODELS = {
+    ("get", "/"): "HomeResponse",
+    ("get", "/meals/today"): "list[MealResponse]",
+    ("delete", "/meals/today"): "ClearMealsResponse",
+    ("post", "/meals/estimate"): "NutritionEstimate",
+    ("delete", "/meals/{meal_id}"): "DeleteMealResponse",
+    ("get", "/meals/date/{meal_date}"): "list[MealResponse]",
+    ("get", "/summary/daily"): "DailySummaryResponse",
+    ("post", "/users/onboarding"): "UserOnboardingResponse",
+    ("get", "/users/profile"): "UserProfileResponse",
+}
+
+
+def schema_name(schema):
+    if "$ref" in schema:
+        return schema["$ref"].rsplit("/", 1)[-1]
+    if schema.get("type") == "array" and "$ref" in schema.get("items", {}):
+        return f"list[{schema_name(schema['items'])}]"
+    return None
+
+
+def test_every_operation_declares_its_response_model(client):
+    paths = client.get("/openapi.json").json()["paths"]
+
+    declared = {
+        (method, path): schema_name(
+            operation["responses"]["200"]["content"]["application/json"]["schema"]
+        )
+        for path, operations in paths.items()
+        for method, operation in operations.items()
+    }
+
+    assert declared == EXPECTED_RESPONSE_MODELS
