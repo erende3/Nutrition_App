@@ -1,6 +1,40 @@
 import base64
 import os
+from functools import lru_cache
+
+from pydantic import ValidationError
+
+import config
 from schemas import NutritionEstimate
+
+
+class EstimatorError(Exception):
+    """Base class for nutrition estimation failures."""
+
+
+class EstimatorNotConfigured(EstimatorError):
+    """The estimator cannot run, e.g. no API key is set."""
+
+
+class EstimatorTimeout(EstimatorError):
+    """The AI provider did not answer in time."""
+
+
+class EstimatorFailed(EstimatorError):
+    """The AI provider failed or returned no usable estimate."""
+
+
+@lru_cache(maxsize=1)
+def _client():
+    # Imported lazily: the SDK is slow to import and only needed here.
+    from openai import OpenAI
+
+    return OpenAI(
+        api_key=os.environ["OPENAI_API_KEY"],
+        timeout=config.OPENAI_TIMEOUT_SECONDS,
+        max_retries=config.OPENAI_MAX_RETRIES,
+    )
+
 
 def encode_image(
     image_bytes: bytes,
@@ -24,11 +58,12 @@ def estimate_nutrition(
 ) -> NutritionEstimate:
     """Estimate nutrition from meal text and an optional image."""
 
-    from openai import OpenAI
+    if not os.environ.get("OPENAI_API_KEY"):
+        raise EstimatorNotConfigured(
+            "The OPENAI_API_KEY environment variable is not set."
+        )
 
-    client = OpenAI(
-        api_key=os.getenv("OPENAI_API_KEY")
-    )
+    import openai
 
     content: list[dict] = [
         {
@@ -58,28 +93,34 @@ def estimate_nutrition(
             }
         )
 
-    response = client.responses.parse(
-        model="gpt-4.1-mini",
-        instructions=(
-            "You are a careful nutrition-estimation assistant. "
-            "Provide approximate calorie and macronutrient estimates. "
-            "Do not present estimates as exact measurements. "
-            "List important assumptions, especially uncertain "
-            "portion sizes."
-        ),
-        input=[
-            {
-                "role": "user",
-                "content": content,
-            }
-        ],
-        text_format=NutritionEstimate,
-    )
+    try:
+        response = _client().responses.parse(
+            model=config.OPENAI_MODEL,
+            instructions=(
+                "You are a careful nutrition-estimation assistant. "
+                "Provide approximate calorie and macronutrient estimates. "
+                "Do not present estimates as exact measurements. "
+                "List important assumptions, especially uncertain "
+                "portion sizes."
+            ),
+            input=[
+                {
+                    "role": "user",
+                    "content": content,
+                }
+            ],
+            text_format=NutritionEstimate,
+        )
+    # APITimeoutError subclasses OpenAIError, so it must come first.
+    except openai.APITimeoutError as exc:
+        raise EstimatorTimeout("The AI provider timed out.") from exc
+    except (openai.OpenAIError, ValidationError) as exc:
+        raise EstimatorFailed(f"The AI provider request failed: {exc}") from exc
 
     estimate = response.output_parsed
 
     if estimate is None:
-        raise RuntimeError(
+        raise EstimatorFailed(
             "The model did not return a nutrition estimate."
         )
 

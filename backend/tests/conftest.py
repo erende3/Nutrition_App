@@ -15,11 +15,13 @@ os.environ["OPENAI_API_KEY"] = "test-key-not-used"
 os.environ["TZ"] = "UTC"
 time.tzset()
 
+import openai
 import pytest
 from fastapi.testclient import TestClient
 
 import app as app_module
 import routes.meals
+import services.nutrition_ai
 from database import Base, engine
 from schemas import NutritionEstimate
 
@@ -46,6 +48,20 @@ def fresh_database():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     yield
+
+
+class NoRealOpenAIClient:
+    def __init__(self, *args, **kwargs):
+        raise AssertionError("tests must not create a real OpenAI client")
+
+
+@pytest.fixture(autouse=True)
+def no_real_openai_client(monkeypatch):
+    """Fail any test that would reach the real OpenAI API."""
+    monkeypatch.setattr(openai, "OpenAI", NoRealOpenAIClient)
+    services.nutrition_ai._client.cache_clear()
+    yield
+    services.nutrition_ai._client.cache_clear()
 
 
 @pytest.fixture(autouse=True)
