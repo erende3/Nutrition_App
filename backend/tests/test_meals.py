@@ -393,3 +393,24 @@ def test_unknown_timezone_header_is_rejected(client, method, path):
 
     assert response.status_code == 400
     assert set(response.json()) == {"detail"}
+
+
+def test_meal_keeps_the_day_it_was_submitted_when_estimation_crosses_midnight(
+    client, monkeypatch, fake_estimate
+):
+    monkeypatch.setattr(config, "DEFAULT_TIMEZONE", "America/New_York")
+    # 23:59:30 in New York when the request starts ...
+    submitted = datetime(2026, 9, 26, 3, 59, 30, tzinfo=timezone.utc)
+    now = [submitted]
+    monkeypatch.setattr(clock, "utc_now", lambda: now[0])
+
+    def slow_estimate(**kwargs):
+        # ... and 00:00:30 the next day when the AI answers.
+        now[0] = datetime(2026, 9, 26, 4, 0, 30, tzinfo=timezone.utc)
+        return fake_estimate
+
+    monkeypatch.setattr(services.meals, "estimate_nutrition", slow_estimate)
+
+    log_meal(client)
+
+    assert stored_meal_times() == [(datetime(2026, 9, 26, 3, 59, 30), date(2026, 9, 25))]

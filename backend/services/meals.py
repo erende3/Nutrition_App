@@ -23,13 +23,15 @@ def log_meal(
     Blocking (AI call and database write): call it from a worker thread.
     """
 
+    # Read before the (possibly slow) estimate, so a meal submitted just
+    # before midnight stays on the day it was submitted.
+    logged_at = clock.utc_now()
+
     estimate = estimate_nutrition(
         message=message,
         image_bytes=image_bytes,
         image_content_type=image_content_type,
     )
-
-    logged_at = clock.utc_now()
 
     create_meal(
         db=db,
