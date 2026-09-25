@@ -1,0 +1,84 @@
+# ============================================================
+# macOS
+# ============================================================
+
+.DS_Store
+.AppleDouble
+.LSOverride
+
+
+# ============================================================
+# Python / FastAPI Backend
+# ============================================================
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment variables / secrets
+.env
+.env.*
+!.env.example
+
+# Python tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Build / package files
+build/
+dist/
+*.egg-info/
+
+
+# ============================================================
+# Backend Database
+# ============================================================
+
+# Local SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+
+
+# ============================================================
+# Xcode / Swift Frontend
+# ============================================================
+
+# Xcode user-specific settings
+xcuserdata/
+*.xcuserstate
+
+# Xcode build output
+DerivedData/
+build/
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Xcode playground
+timeline.xctimeline
+playground.xcworkspace
+
+
+# ============================================================
+# Editors
+# ============================================================
+
+.vscode/
+.idea/
+
+# Vim / Neovim temporary files
+*.swp
+*.swo
+*~
