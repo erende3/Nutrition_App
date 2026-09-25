@@ -34,20 +34,11 @@ def get_todays_meals(
     db: Session,
     user: User,
 ) -> list[Meal]:
-    today = date.today()
-
-    meals = (
-        db.query(Meal)
-        .filter(Meal.user_id == user.id)
-        .order_by(Meal.created_at.desc())
-        .all()
+    return get_meals_by_date(
+        db=db,
+        user=user,
+        target_date=date.today(),
     )
-
-    return [
-        meal
-        for meal in meals
-        if meal.created_at.date() == today
-    ]
 
 def get_meals_by_date(
     db: Session,

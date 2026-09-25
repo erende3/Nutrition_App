@@ -3,8 +3,9 @@ from datetime import date
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from models import Meal, User
+from crud import get_meals_by_date
 from dependencies import get_db, get_or_create_default_user
+from models import User
 
 
 router = APIRouter(
@@ -18,17 +19,11 @@ def get_daily_summary_from_db(
 ) -> dict:
     today = date.today()
 
-    meals = (
-        db.query(Meal)
-        .filter(Meal.user_id == user.id)
-        .all()
+    todays_meals = get_meals_by_date(
+        db=db,
+        user=user,
+        target_date=today,
     )
-
-    todays_meals = [
-        meal
-        for meal in meals
-        if meal.created_at.date() == today
-    ]
 
     calories_consumed = sum(
         meal.calories

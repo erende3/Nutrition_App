@@ -1,4 +1,4 @@
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -125,6 +125,49 @@ def test_meals_for_date_returns_meals_logged_that_day(client):
     meals = client.get(f"/meals/date/{date.today().isoformat()}").json()
 
     assert [meal["meal_name"] for meal in meals] == ["Chicken and rice"]
+
+
+def insert_meal_at(created_at, meal_name="Yesterday's dinner", calories=400):
+    with SessionLocal() as db:
+        db.add(
+            Meal(
+                user_id=1,
+                meal_name=meal_name,
+                calories=calories,
+                protein_g=20,
+                carbohydrates_g=40,
+                fat_g=15,
+                confidence=0.7,
+                calorie_low=350,
+                calorie_high=450,
+                created_at=created_at,
+            )
+        )
+        db.commit()
+
+
+def yesterday_at_noon():
+    return datetime.combine(date.today() - timedelta(days=1), time(12, 0))
+
+
+def test_todays_meals_exclude_meals_from_other_days(client):
+    client.get("/users/profile")  # creates user 1
+    insert_meal_at(yesterday_at_noon())
+    log_meal(client)
+
+    meals = client.get("/meals/today").json()
+
+    assert [meal["meal_name"] for meal in meals] == ["Chicken and rice"]
+
+
+def test_summary_excludes_meals_from_other_days(client):
+    client.get("/users/profile")  # creates user 1
+    insert_meal_at(yesterday_at_noon())
+    log_meal(client)
+
+    summary = client.get("/summary/daily").json()
+
+    assert summary["calories_consumed"] == 650
 
 
 @pytest.mark.xfail(
