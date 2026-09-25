@@ -4,7 +4,7 @@ AI-powered calorie and nutrition tracker: a SwiftUI iOS app (`frontend/`) and a 
 
 ## Backend
 
-Requires Python 3.11.
+Requires Python 3.11. Keep the repository outside iCloud-synced folders (such as `~/Desktop` or `~/Documents` with iCloud Drive enabled); iCloud can stall file reads for minutes, which freezes imports and the server.
 
 ```bash
 cd backend
@@ -14,6 +14,14 @@ pip install -r requirements-dev.txt
 cp .env.example .env        # then set OPENAI_API_KEY in .env
 python app.py               # serves on http://0.0.0.0:8000, API docs at /docs
 ```
+
+`python app.py` auto-reloads on code changes and ignores `.venv`. To run uvicorn directly with the same behavior (reachable from a phone on your LAN):
+
+```bash
+uvicorn app:app --host 0.0.0.0 --port 8000 --reload --reload-exclude "$PWD/.venv"
+```
+
+The `--reload-exclude` path must be absolute, and it only takes effect when `watchfiles` is installed (it is in `requirements-dev.txt`).
 
 Run the tests (from `backend/`, with the virtualenv active):
 

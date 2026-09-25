@@ -32,6 +32,8 @@ def home() -> dict[str, str]:
 
 
 if __name__ == "__main__":
+    from pathlib import Path
+
     import uvicorn
 
     uvicorn.run(
@@ -39,4 +41,7 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8000,
         reload=True,
+        # Must be absolute: uvicorn matches excluded directories against
+        # absolute paths. Needs watchfiles (requirements-dev.txt).
+        reload_excludes=[str(Path(__file__).resolve().parent / ".venv")],
     )
