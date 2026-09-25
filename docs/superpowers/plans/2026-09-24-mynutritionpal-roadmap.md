@@ -59,6 +59,23 @@
 
 **Done when:** a fresh clone runs by following the README; `pytest` passes, with the known bugs as `xfail`; no `print` calls remain in the backend; the iOS app builds and behaves the same as before.
 
+## Milestone 0.3: backend/API architecture (added 2026-09-25)
+
+A behavior-preserving milestone between Phase 0 and Phase 1. It finished the one remaining Phase 0 item and pulled forward the structural, no-user-visible-change parts of Phases 1 and 3, so the later phases build on clean seams. Plan: `docs/superpowers/plans/2026-09-25-milestone-0.3-backend-architecture.md`.
+
+- **From Phase 0:** the OpenAI model name comes from the environment (`config.py`, `OPENAI_MODEL`).
+- **From Phase 1, item 4:** the OpenAI client has an explicit timeout (60 s) and retry count (1), both configurable. The estimate and the meal save run off the event loop. The sync SDK stays, called through `run_in_threadpool`.
+- **From Phase 1, item 5 (partly):** estimate failures are logged, and the client gets a generic message with 503 / 504 / 502 / 500. Exception text never reaches the client. The body is still `{"detail": str}`; the single error envelope with error codes stays in Phase 3.
+- **From Phase 3:**
+  - Pydantic response models on every route. `/meals/today` and `/meals/date` share `MealResponse`, which now includes confidence and the calorie range, and no `user_id`.
+  - The `get_current_user` dependency, which all user-scoped routes use. It still returns user 1, and the first-user creation race is fixed.
+  - The estimator boundary: typed estimator errors, with no SDK types leaking out of `services/nutrition_ai.py`.
+- **New seams:** `services/meals.py` (estimate plus auto-save) and `services/summary.py` (daily totals).
+
+**Still in Phase 1:** Alembic, `local_date` and timezone, calorie goal clamping, the upload size limit, and moving to an SQL day filter (`get_meals_by_date` still filters in Python).
+
+**Still in Phase 3:** `/v1`, the day endpoint, the error envelope with codes, splitting the LLM schema from the API response, and AI metadata on meals.
+
 ## Phase 1: Backend correctness
 
 **Accomplish**

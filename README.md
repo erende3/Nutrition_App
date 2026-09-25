@@ -37,6 +37,13 @@ Tests use a temporary database and a fake nutrition estimator. They never call O
 | --- | --- | --- | --- |
 | `OPENAI_API_KEY` | For meal estimates | none | OpenAI access. Put it in `backend/.env`. |
 | `DATABASE_URL` | No | `sqlite:///./nutrition.db` | SQLAlchemy database URL. Set it in `backend/.env` or in the shell; a shell value wins. The default path is relative to the directory you start the server from. |
+| `OPENAI_MODEL` | No | `gpt-4.1-mini` | Model used for meal estimates. |
+| `OPENAI_TIMEOUT_SECONDS` | No | `60` | Per-attempt timeout for the OpenAI request. Keep the worst case (timeout × (retries + 1)) under the iOS app's 300-second request timeout. |
+| `OPENAI_MAX_RETRIES` | No | `1` | How many times the OpenAI SDK retries a failed request. |
+
+All settings are read in `backend/config.py`.
+
+When an estimate fails, the API returns 503 (estimator not configured, e.g. no API key), 504 (the AI provider timed out), 502 (the AI provider failed) or 500 (anything else), with a generic `detail` message. The underlying error is logged by the server, never returned to the client.
 
 ## iOS app
 
