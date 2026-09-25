@@ -47,8 +47,10 @@ struct APIClientTests {
     }
 
     private var onlyRequest: URLRequest {
-        #expect(StubURLProtocol.requests.count == 1)
-        return StubURLProtocol.requests[0]
+        get throws {
+            #expect(StubURLProtocol.requests.count == 1)
+            return try #require(StubURLProtocol.requests.first)
+        }
     }
 
     // MARK: - Endpoints
@@ -60,8 +62,8 @@ struct APIClientTests {
         let summary = try await api.getDailySummary()
 
         #expect(summary.calories_consumed == 650)
-        #expect(onlyRequest.httpMethod == "GET")
-        #expect(onlyRequest.url?.absoluteString == "http://Erics-Mac.local:8000/summary/daily")
+        #expect(try onlyRequest.httpMethod == "GET")
+        #expect(try onlyRequest.url?.absoluteString == "http://Erics-Mac.local:8000/summary/daily")
     }
 
     @Test func todaysMeals() async throws {
@@ -71,8 +73,8 @@ struct APIClientTests {
         let meals = try await api.getTodaysMeals()
 
         #expect(meals.map(\.id) == [7])
-        #expect(onlyRequest.httpMethod == "GET")
-        #expect(onlyRequest.url?.absoluteString == "http://Erics-Mac.local:8000/meals/today")
+        #expect(try onlyRequest.httpMethod == "GET")
+        #expect(try onlyRequest.url?.absoluteString == "http://Erics-Mac.local:8000/meals/today")
     }
 
     @Test func userProfile() async throws {
@@ -82,8 +84,8 @@ struct APIClientTests {
         let profile = try await api.getUserProfile()
 
         #expect(!profile.onboardingComplete)
-        #expect(onlyRequest.httpMethod == "GET")
-        #expect(onlyRequest.url?.absoluteString == "http://Erics-Mac.local:8000/users/profile")
+        #expect(try onlyRequest.httpMethod == "GET")
+        #expect(try onlyRequest.url?.absoluteString == "http://Erics-Mac.local:8000/users/profile")
     }
 
     @Test func deleteMeal() async throws {
@@ -92,8 +94,8 @@ struct APIClientTests {
 
         try await api.deleteMeal(id: 7)
 
-        #expect(onlyRequest.httpMethod == "DELETE")
-        #expect(onlyRequest.url?.absoluteString == "http://Erics-Mac.local:8000/meals/7")
+        #expect(try onlyRequest.httpMethod == "DELETE")
+        #expect(try onlyRequest.url?.absoluteString == "http://Erics-Mac.local:8000/meals/7")
     }
 
     @Test func submitOnboardingSendsTheSameJSON() async throws {
@@ -106,7 +108,7 @@ struct APIClientTests {
         )
 
         #expect(result.dailyCalorieGoal == 2556)
-        let request = onlyRequest
+        let request = try onlyRequest
         #expect(request.httpMethod == "POST")
         #expect(request.url?.absoluteString == "http://Erics-Mac.local:8000/users/onboarding")
         #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
@@ -126,7 +128,7 @@ struct APIClientTests {
         let estimate = try await api.estimateMeal(message: "2 eggs", imageData: Data([0xFF, 0xD8]))
 
         #expect(estimate.calories == 650)
-        let request = onlyRequest
+        let request = try onlyRequest
         #expect(request.httpMethod == "POST")
         #expect(request.url?.absoluteString == "http://Erics-Mac.local:8000/meals/estimate")
 

@@ -102,4 +102,4 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test \
   -only-testing:MyNutritionPalTests
 ```
 
-Use a simulator with iOS 18.5 or later. The tests use a stubbed network and never call the backend.
+Use a simulator with iOS 18.5 or later. The unit tests use a stubbed network. Xcode launches the app itself as the test host, though, and the app makes its usual launch requests (reading the profile and today's summary) to the server in `Local.xcconfig` if it's reachable.
