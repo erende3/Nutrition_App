@@ -89,6 +89,9 @@ class UserOnboardingResponse(BaseModel):
 
     daily_calorie_goal: int
 
+    # True when the calculated goal was not positive and the default was used.
+    goal_adjusted: bool
+
 class UserProfileResponse(BaseModel):
     id: int
     age: int | None

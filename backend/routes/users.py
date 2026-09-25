@@ -50,6 +50,7 @@ def onboard_user(
         bmr=result["bmr"],
         tdee=result["tdee"],
         daily_calorie_goal=result["daily_calorie_goal"],
+        goal_adjusted=result["goal_adjusted"],
     )
 
 @router.get(

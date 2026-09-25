@@ -3,7 +3,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
-from models import User
+from models import DEFAULT_DAILY_CALORIE_GOAL, User
 
 
 def get_db():
@@ -21,7 +21,7 @@ def get_or_create_default_user(db: Session) -> User:
     if user is None:
         user = User(
             id=1,
-            daily_calorie_goal=2200,
+            daily_calorie_goal=DEFAULT_DAILY_CALORIE_GOAL,
         )
 
         db.add(user)

@@ -5,6 +5,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
 
+# Every user's goal before onboarding, and the fallback when the calculated
+# goal is not positive. Not a nutrition policy (Milestone 0.4, D4).
+DEFAULT_DAILY_CALORIE_GOAL = 2200
+
 
 class User(Base):
     __tablename__ = "users"
@@ -47,7 +51,7 @@ class User(Base):
 
     daily_calorie_goal: Mapped[int] = mapped_column(
         Integer,
-        default=2200,
+        default=DEFAULT_DAILY_CALORIE_GOAL,
     )
 
     meals: Mapped[list["Meal"]] = relationship(

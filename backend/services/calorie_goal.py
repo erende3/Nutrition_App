@@ -1,3 +1,4 @@
+from models import DEFAULT_DAILY_CALORIE_GOAL
 from schemas import ActivityLevel, Goal, Sex
 
 
@@ -50,6 +51,10 @@ def calculate_daily_calorie_goal(
 ) -> dict:
     """
     Calculate BMR, estimated TDEE, and a daily calorie target.
+
+    A target of 0 or below (possible for extreme inputs) is replaced by the
+    default goal, and goal_adjusted reports it. Positive targets are kept as
+    calculated: there are no nutrition-policy bounds yet.
     """
 
     bmr = calculate_bmr(
@@ -63,13 +68,19 @@ def calculate_daily_calorie_goal(
 
     tdee = bmr * activity_factor
 
-    calorie_goal = (
+    calorie_goal = round(
         tdee
         + GOAL_ADJUSTMENTS[goal]
     )
 
+    goal_adjusted = calorie_goal <= 0
+
+    if goal_adjusted:
+        calorie_goal = DEFAULT_DAILY_CALORIE_GOAL
+
     return {
         "bmr": round(bmr),
         "tdee": round(tdee),
-        "daily_calorie_goal": round(calorie_goal),
+        "daily_calorie_goal": calorie_goal,
+        "goal_adjusted": goal_adjusted,
     }

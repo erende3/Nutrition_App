@@ -111,7 +111,7 @@ PROFILE_AFTER_ONBOARDING = {
     "goal": STR,
 }
 
-ONBOARDING = {"bmr": INT, "tdee": INT, "daily_calorie_goal": INT}
+ONBOARDING = {"bmr": INT, "tdee": INT, "daily_calorie_goal": INT, "goal_adjusted": BOOL}
 
 PROFILE_INPUT = {
     "age": 30,
@@ -135,7 +135,7 @@ SWIFT_MEAL = {
 SWIFT_DAILY_SUMMARY = SUMMARY
 SWIFT_NUTRITION_ESTIMATE = ESTIMATE
 SWIFT_USER_PROFILE = PROFILE_BEFORE_ONBOARDING
-SWIFT_ONBOARDING_RESULT = ONBOARDING
+SWIFT_ONBOARDING_RESULT = {"bmr": INT, "tdee": INT, "daily_calorie_goal": INT}
 
 NAIVE_ISO_DATETIME = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{6})?$")
 

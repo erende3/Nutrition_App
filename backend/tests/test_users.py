@@ -24,7 +24,12 @@ def test_onboarding_returns_calculated_goal_and_completes_profile(client):
     response = client.post("/users/onboarding", json=TYPICAL_PROFILE)
 
     assert response.status_code == 200
-    assert response.json() == {"bmr": 1649, "tdee": 2556, "daily_calorie_goal": 2556}
+    assert response.json() == {
+        "bmr": 1649,
+        "tdee": 2556,
+        "daily_calorie_goal": 2556,
+        "goal_adjusted": False,
+    }
 
     profile = client.get("/users/profile").json()
     assert profile["onboarding_complete"] is True
@@ -38,10 +43,6 @@ def test_onboarding_rejects_age_below_minimum(client):
     assert response.status_code == 422
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Known bug (Phase 1): extreme but accepted inputs produce a goal <= 0",
-)
 @pytest.mark.parametrize(
     "profile",
     [
@@ -59,3 +60,15 @@ def test_accepted_onboarding_input_never_produces_non_positive_goal(client, prof
 
     assert response.status_code == 200
     assert response.json()["daily_calorie_goal"] > 0
+
+
+def test_onboarding_with_non_positive_formula_goal_stores_the_default(client):
+    response = client.post(
+        "/users/onboarding",
+        json={"age": 120, "sex": "female", "height_cm": 91.44, "weight_kg": 31.75,
+              "activity_level": "sedentary", "goal": "lose_weight"},
+    )
+
+    assert response.json()["daily_calorie_goal"] == 2200
+    assert response.json()["goal_adjusted"] is True
+    assert client.get("/users/profile").json()["daily_calorie_goal"] == 2200
