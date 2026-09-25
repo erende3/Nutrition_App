@@ -58,9 +58,8 @@ dist/
 xcuserdata/
 *.xcuserstate
 
-# Xcode build output
+# Xcode build output (build/ is covered in the Python section)
 DerivedData/
-build/
 
 # Swift Package Manager
 .build/
@@ -82,4 +81,14 @@ playground.xcworkspace
 *.swp
 *.swo
 *~
+
+
+# ============================================================
+# Tooling output
+# ============================================================
+
+# Graphify knowledge graph (regenerate with `graphify update .`)
 graphify-out/
+
+# Superpowers plan-execution workspaces
+.superpowers/
