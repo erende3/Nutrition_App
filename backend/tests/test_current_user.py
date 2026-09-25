@@ -44,6 +44,7 @@ def add_meal(user_id, meal_name, calories=100):
             confidence=0.5,
             calorie_low=calories,
             calorie_high=calories,
+            local_date=date.today(),
         )
         db.add(meal)
         db.commit()

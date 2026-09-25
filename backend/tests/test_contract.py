@@ -158,6 +158,7 @@ def insert_meal_today(at, meal_name):
                 calorie_low=90,
                 calorie_high=110,
                 created_at=datetime.combine(date.today(), at),
+                local_date=date.today(),
             )
         )
         db.commit()

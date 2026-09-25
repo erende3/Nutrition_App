@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy.orm import Session
 
@@ -10,6 +10,8 @@ def create_meal(
     db: Session,
     user: User,
     estimate: NutritionEstimate,
+    created_at: datetime,
+    local_date: date,
 ) -> Meal:
     meal = Meal(
         user_id=user.id,
@@ -21,6 +23,8 @@ def create_meal(
         confidence=estimate.confidence,
         calorie_low=estimate.calorie_low,
         calorie_high=estimate.calorie_high,
+        created_at=created_at,
+        local_date=local_date,
     )
 
     db.add(meal)

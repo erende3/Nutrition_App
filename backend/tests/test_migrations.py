@@ -18,6 +18,7 @@ from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError
 
 import app as app_module
+import config
 import db_migrations
 from database import Base
 
@@ -280,3 +281,50 @@ def test_goal_migration_downgrades_and_upgrades_again(db_url):
     command.upgrade(alembic_cfg, "0002_goal_positive_check")
 
     assert rows(db_url, "SELECT daily_calorie_goal FROM users") == [(1800,)]
+
+
+def test_local_date_migration_backfills_from_utc_in_the_default_zone(db_url, monkeypatch):
+    monkeypatch.setattr(config, "DEFAULT_TIMEZONE", "America/New_York")
+    alembic_cfg = db_migrations.alembic_config(db_url)
+    command.upgrade(alembic_cfg, "0002_goal_positive_check")
+    insert_users_with_goals(db_url, [2633])
+    stored_utc = [
+        "2026-09-25 12:00:00",  # 08:00 EDT: same day
+        "2026-09-26 01:30:00",  # 21:30 EDT the evening before
+        "2026-03-08 04:30:00",  # 23:30 EST on Mar 7 (DST starts later that night)
+        "2026-11-01 04:30:00",  # 00:30 EDT on Nov 1 (DST ends later that night)
+    ]
+    run_sql(
+        db_url,
+        [
+            "INSERT INTO meals (user_id, meal_name, calories, protein_g, carbohydrates_g, "
+            "fat_g, confidence, calorie_low, calorie_high, created_at) "
+            f"VALUES (1, 'Meal', 100, 1, 1, 1, 0.5, 90, 110, '{created_at}')"
+            for created_at in stored_utc
+        ],
+    )
+
+    command.upgrade(alembic_cfg, "0003_meal_local_date")
+
+    assert rows(db_url, "SELECT local_date FROM meals ORDER BY id") == [
+        ("2026-09-25",),
+        ("2026-09-25",),
+        ("2026-03-07",),
+        ("2026-11-01",),
+    ]
+    columns = {column["name"]: column for column in inspect(create_engine(db_url)).get_columns("meals")}
+    assert columns["local_date"]["nullable"] is False
+    indexes = {index["name"]: index["column_names"] for index in inspect(create_engine(db_url)).get_indexes("meals")}
+    assert indexes["ix_meals_user_local_date"] == ["user_id", "local_date"]
+
+
+def test_local_date_migration_downgrades_and_upgrades_again(db_url):
+    alembic_cfg = db_migrations.alembic_config(db_url)
+    command.upgrade(alembic_cfg, "0003_meal_local_date")
+
+    command.downgrade(alembic_cfg, "0002_goal_positive_check")
+    columns = {column["name"] for column in inspect(create_engine(db_url)).get_columns("meals")}
+    assert "local_date" not in columns
+
+    command.upgrade(alembic_cfg, "0003_meal_local_date")
+    assert db_migrations.current_revision(db_url) == "0003_meal_local_date"

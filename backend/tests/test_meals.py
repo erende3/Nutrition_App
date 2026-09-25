@@ -5,10 +5,12 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+import config
 import services.meals
 import services.nutrition_ai
 from database import SessionLocal
 from models import Meal
+from services import clock
 from services.nutrition_ai import EstimatorFailed, EstimatorNotConfigured, EstimatorTimeout
 
 
@@ -247,6 +249,7 @@ def insert_meal_at(created_at, meal_name="Yesterday's dinner", calories=400):
                 calorie_low=350,
                 calorie_high=450,
                 created_at=created_at,
+                local_date=created_at.date(),
             )
         )
         db.commit()
@@ -307,3 +310,34 @@ def test_late_evening_meal_counts_toward_that_local_day(client, server_timezone)
     summary = client.get("/summary/daily").json()
 
     assert summary["calories_consumed"] == 300
+
+
+def freeze_clock(monkeypatch, utc_moment):
+    monkeypatch.setattr(clock, "utc_now", lambda: utc_moment)
+
+
+def stored_meal_times():
+    with SessionLocal() as db:
+        return [(meal.created_at, meal.local_date) for meal in db.query(Meal)]
+
+
+def test_logged_meal_stores_the_local_date_from_the_timezone_header(client, monkeypatch):
+    freeze_clock(monkeypatch, datetime(2026, 9, 25, 20, 0, tzinfo=timezone.utc))
+
+    client.post(
+        "/meals/estimate",
+        data={"message": "ramen"},
+        headers={"X-Timezone": "Asia/Tokyo"},
+    )
+
+    # 20:00 UTC is 05:00 the next morning in Tokyo.
+    assert stored_meal_times() == [(datetime(2026, 9, 25, 20, 0), date(2026, 9, 26))]
+
+
+def test_logged_meal_without_header_uses_the_server_default_zone(client, monkeypatch):
+    monkeypatch.setattr(config, "DEFAULT_TIMEZONE", "America/New_York")
+    freeze_clock(monkeypatch, datetime(2026, 9, 26, 3, 30, tzinfo=timezone.utc))
+
+    log_meal(client)
+
+    assert stored_meal_times() == [(datetime(2026, 9, 26, 3, 30), date(2026, 9, 25))]

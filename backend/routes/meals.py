@@ -1,6 +1,7 @@
 import logging
 from datetime import date
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
@@ -12,7 +13,7 @@ from crud import (
     get_meals_by_date,
     get_todays_meals,
 )
-from dependencies import get_current_user, get_db
+from dependencies import get_current_user, get_db, get_request_timezone
 from models import User
 from schemas import (
     ClearMealsResponse,
@@ -59,6 +60,7 @@ async def estimate_meal(
     image: Optional[UploadFile] = File(default=None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    tz: ZoneInfo = Depends(get_request_timezone),
 ) -> NutritionEstimate:
     """
     Estimate calories and macros from a meal description and optional image,
@@ -99,6 +101,7 @@ async def estimate_meal(
             db=db,
             user=user,
             message=message,
+            tz=tz,
             image_bytes=image_bytes,
             image_content_type=image_content_type,
         )

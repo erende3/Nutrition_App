@@ -26,6 +26,7 @@ def summary_for(goal, meals, day=DAY):
                     calorie_low=calories,
                     calorie_high=calories,
                     created_at=created_at,
+                    local_date=created_at.date(),
                 )
             )
         db.commit()

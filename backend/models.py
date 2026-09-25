@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import date, datetime, timezone
 
-from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import CheckConstraint, Date, DateTime, Float, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -68,6 +68,9 @@ class User(Base):
 
 class Meal(Base):
     __tablename__ = "meals"
+    __table_args__ = (
+        Index("ix_meals_user_local_date", "user_id", "local_date"),
+    )
 
     id: Mapped[int] = mapped_column(
         Integer,
@@ -96,10 +99,15 @@ class Meal(Base):
 
     calorie_high: Mapped[int] = mapped_column(Integer)
 
+    # When the meal was logged, stored as naive UTC.
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
-        default=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
     )
+
+    # The user's calendar date when the meal was logged; decides which
+    # day's totals it counts toward.
+    local_date: Mapped[date] = mapped_column(Date)
 
     user: Mapped["User"] = relationship(
         back_populates="meals",
