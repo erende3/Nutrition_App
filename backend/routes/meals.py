@@ -7,7 +7,6 @@ from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 from crud import (
-    create_meal,
     delete_meal,
     delete_todays_meals,
     get_meals_by_date,
@@ -15,7 +14,7 @@ from crud import (
 )
 from dependencies import get_db, get_or_create_default_user
 from schemas import NutritionEstimate
-from services.nutrition_ai import estimate_nutrition
+from services.meals import log_meal
 
 router = APIRouter(
     prefix="/meals",
@@ -90,24 +89,18 @@ async def estimate_meal(
         image_content_type = image.content_type
 
     try:
-        # estimate_nutrition is blocking (OpenAI call, first-use import);
+        user = get_or_create_default_user(db)
+
+        # log_meal blocks (OpenAI call, first-use import, database write);
         # run it off the event loop so other requests keep being served.
-        estimate = await run_in_threadpool(
-            estimate_nutrition,
+        return await run_in_threadpool(
+            log_meal,
+            db=db,
+            user=user,
             message=message,
             image_bytes=image_bytes,
             image_content_type=image_content_type,
         )
-
-        user = get_or_create_default_user(db)
-
-        create_meal(
-            db=db,
-            user=user,
-            estimate=estimate,
-        )
-
-        return estimate
 
     except HTTPException:
         raise

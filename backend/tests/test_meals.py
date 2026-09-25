@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-import routes.meals
+import services.meals
 from database import SessionLocal
 from models import Meal
 
@@ -85,7 +85,7 @@ def test_estimator_failure_returns_500_and_saves_nothing(client, monkeypatch):
     def failing_estimate(**kwargs):
         raise RuntimeError("model unavailable")
 
-    monkeypatch.setattr(routes.meals, "estimate_nutrition", failing_estimate)
+    monkeypatch.setattr(services.meals, "estimate_nutrition", failing_estimate)
 
     response = log_meal(client)
 
@@ -102,7 +102,7 @@ def test_slow_estimate_does_not_block_other_requests(client, monkeypatch, fake_e
         release_estimate.wait(timeout=10)
         return fake_estimate
 
-    monkeypatch.setattr(routes.meals, "estimate_nutrition", slow_estimate)
+    monkeypatch.setattr(services.meals, "estimate_nutrition", slow_estimate)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         estimate = pool.submit(log_meal, client)
@@ -114,6 +114,34 @@ def test_slow_estimate_does_not_block_other_requests(client, monkeypatch, fake_e
             estimate_finished_first = estimate.done()
         finally:
             release_estimate.set()
+
+        assert summary_response.status_code == 200
+        assert estimate_finished_first is False
+        assert estimate.result(timeout=10).status_code == 200
+
+
+def test_slow_meal_save_does_not_block_other_requests(client, monkeypatch):
+    save_started = threading.Event()
+    release_save = threading.Event()
+    real_create_meal = services.meals.create_meal
+
+    def slow_create_meal(**kwargs):
+        save_started.set()
+        release_save.wait(timeout=10)
+        return real_create_meal(**kwargs)
+
+    monkeypatch.setattr(services.meals, "create_meal", slow_create_meal)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        estimate = pool.submit(log_meal, client)
+        try:
+            assert save_started.wait(timeout=10)
+            summary = pool.submit(client.get, "/summary/daily")
+            # Must answer while the meal save is still in progress.
+            summary_response = summary.result(timeout=5)
+            estimate_finished_first = estimate.done()
+        finally:
+            release_save.set()
 
         assert summary_response.status_code == 200
         assert estimate_finished_first is False

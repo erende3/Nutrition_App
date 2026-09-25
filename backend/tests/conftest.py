@@ -20,7 +20,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app as app_module
-import routes.meals
+import services.meals
 import services.nutrition_ai
 from database import Base, engine
 from schemas import NutritionEstimate
@@ -79,7 +79,7 @@ def fake_estimator(monkeypatch):
         )
         return FAKE_ESTIMATE
 
-    monkeypatch.setattr(routes.meals, "estimate_nutrition", estimate)
+    monkeypatch.setattr(services.meals, "estimate_nutrition", estimate)
     return calls
 
 
