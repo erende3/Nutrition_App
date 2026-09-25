@@ -1,3 +1,5 @@
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -89,6 +91,33 @@ def test_estimator_failure_returns_500_and_saves_nothing(client, monkeypatch):
 
     assert response.status_code == 500
     assert client.get("/meals/today").json() == []
+
+
+def test_slow_estimate_does_not_block_other_requests(client, monkeypatch, fake_estimate):
+    estimate_started = threading.Event()
+    release_estimate = threading.Event()
+
+    def slow_estimate(message, image_bytes=None, image_content_type=None):
+        estimate_started.set()
+        release_estimate.wait(timeout=10)
+        return fake_estimate
+
+    monkeypatch.setattr(routes.meals, "estimate_nutrition", slow_estimate)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        estimate = pool.submit(log_meal, client)
+        try:
+            assert estimate_started.wait(timeout=10)
+            summary = pool.submit(client.get, "/summary/daily")
+            # Must answer while the estimate is still in progress.
+            summary_response = summary.result(timeout=5)
+            estimate_finished_first = estimate.done()
+        finally:
+            release_estimate.set()
+
+        assert summary_response.status_code == 200
+        assert estimate_finished_first is False
+        assert estimate.result(timeout=10).status_code == 200
 
 
 def test_delete_meal_removes_it_and_updates_summary(client):

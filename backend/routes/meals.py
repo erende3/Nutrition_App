@@ -3,6 +3,7 @@ from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 from crud import (
@@ -89,7 +90,10 @@ async def estimate_meal(
         image_content_type = image.content_type
 
     try:
-        estimate = estimate_nutrition(
+        # estimate_nutrition is blocking (OpenAI call, first-use import);
+        # run it off the event loop so other requests keep being served.
+        estimate = await run_in_threadpool(
+            estimate_nutrition,
             message=message,
             image_bytes=image_bytes,
             image_content_type=image_content_type,
