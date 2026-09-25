@@ -3,7 +3,8 @@ from datetime import date
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from dependencies import get_db, get_or_create_default_user
+from dependencies import get_current_user, get_db
+from models import User
 from schemas import DailySummaryResponse
 from services.summary import get_daily_summary
 
@@ -17,9 +18,8 @@ router = APIRouter(
 @router.get("/daily", response_model=DailySummaryResponse)
 def daily_summary(
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
-    user = get_or_create_default_user(db)
-
     return get_daily_summary(
         db,
         user,

@@ -12,7 +12,8 @@ from crud import (
     get_meals_by_date,
     get_todays_meals,
 )
-from dependencies import get_db, get_or_create_default_user
+from dependencies import get_current_user, get_db
+from models import User
 from schemas import (
     ClearMealsResponse,
     DeleteMealResponse,
@@ -45,9 +46,8 @@ UNEXPECTED_ESTIMATE_ERROR = (500, "Something went wrong while logging the meal."
 @router.get("/today", response_model=list[MealResponse])
 def meals_today(
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
-    user = get_or_create_default_user(db)
-
     return get_todays_meals(
         db=db,
         user=user,
@@ -58,6 +58,7 @@ async def estimate_meal(
     message: str = Form(...),
     image: Optional[UploadFile] = File(default=None),
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> NutritionEstimate:
     """
     Estimate calories and macros from a meal description and optional image,
@@ -91,8 +92,6 @@ async def estimate_meal(
         image_content_type = image.content_type
 
     try:
-        user = get_or_create_default_user(db)
-
         # log_meal blocks (OpenAI call, first-use import, database write);
         # run it off the event loop so other requests keep being served.
         return await run_in_threadpool(
@@ -118,9 +117,8 @@ async def estimate_meal(
 @router.delete("/today")
 def clear_todays_meals(
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> ClearMealsResponse:
-    user = get_or_create_default_user(db)
-
     deleted_count = delete_todays_meals(
         db=db,
         user=user,
@@ -134,9 +132,8 @@ def clear_todays_meals(
 def remove_meal(
     meal_id: int,
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ) -> DeleteMealResponse:
-    user = get_or_create_default_user(db)
-
     deleted = delete_meal(
         db=db,
         user=user,
@@ -157,9 +154,8 @@ def remove_meal(
 def get_meals_for_date(
     meal_date: date,
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
 ):
-    user = get_or_create_default_user(db)
-
     return get_meals_by_date(
         db=db,
         user=user,
