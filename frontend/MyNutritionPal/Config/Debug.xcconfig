@@ -1,0 +1,8 @@
+// Debug build settings for the MyNutritionPal app target.
+//
+// API_BASE_URL is the backend address. It's empty here; set your own in
+// Config/Local.xcconfig (git-ignored). Copy Local.xcconfig.example to start.
+
+API_BASE_URL =
+
+#include? "Local.xcconfig"

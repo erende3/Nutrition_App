@@ -1,0 +1,6 @@
+// Release build settings for the MyNutritionPal app target.
+//
+// There is no production backend yet, so a Release build has no server
+// address and says so at launch.
+
+API_BASE_URL =

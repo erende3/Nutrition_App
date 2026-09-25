@@ -11,7 +11,7 @@ import Foundation
 final class NutritionAPI {
     static let shared = NutritionAPI()
 
-    private let baseURL = "http://172.20.10.9:8000"
+    private let baseURL = AppConfig.baseURL?.absoluteString ?? ""
     func estimateMeal(
         message: String,
         imageData: Data? = nil

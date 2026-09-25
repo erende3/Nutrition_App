@@ -54,6 +54,9 @@ dist/
 # Xcode / Swift Frontend
 # ============================================================
 
+# Per-developer build settings (the backend address); see Local.xcconfig.example
+frontend/MyNutritionPal/Config/Local.xcconfig
+
 # Xcode user-specific settings
 xcuserdata/
 *.xcuserstate

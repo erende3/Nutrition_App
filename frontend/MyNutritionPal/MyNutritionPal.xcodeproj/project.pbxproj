@@ -27,6 +27,8 @@
 		882AC8583044A05D00C858B2 /* MyNutritionPal.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MyNutritionPal.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		882AC8673044A06000C858B2 /* MyNutritionPalTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MyNutritionPalTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		882AC8713044A06000C858B2 /* MyNutritionPalUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MyNutritionPalUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		882AC8D13050000000C858B2 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		882AC8D23050000000C858B2 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -88,6 +90,7 @@
 		882AC84F3044A05D00C858B2 = {
 			isa = PBXGroup;
 			children = (
+				882AC8D03050000000C858B2 /* Config */,
 				882AC85A3044A05D00C858B2 /* MyNutritionPal */,
 				882AC86A3044A06000C858B2 /* MyNutritionPalTests */,
 				882AC8743044A06000C858B2 /* MyNutritionPalUITests */,
@@ -103,6 +106,15 @@
 				882AC8713044A06000C858B2 /* MyNutritionPalUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		882AC8D03050000000C858B2 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				882AC8D13050000000C858B2 /* Debug.xcconfig */,
+				882AC8D23050000000C858B2 /* Release.xcconfig */,
+			);
+			path = Config;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -403,6 +415,7 @@
 		};
 		882AC87C3044A06000C858B2 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 882AC8D13050000000C858B2 /* Debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -435,6 +448,7 @@
 		};
 		882AC87D3044A06000C858B2 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 882AC8D23050000000C858B2 /* Release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
