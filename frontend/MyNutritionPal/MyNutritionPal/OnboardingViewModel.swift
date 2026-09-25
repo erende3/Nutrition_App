@@ -35,10 +35,6 @@ final class OnboardingViewModel: ObservableObject {
         weightLb * 0.45359237
     }
 
-    var onboardingComplete: Bool {
-        dailyCalorieGoal != nil
-    }
-
     func submitOnboarding() async {
         validateInputs()
         isLoading = true

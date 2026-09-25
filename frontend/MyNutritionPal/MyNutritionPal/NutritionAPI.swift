@@ -63,12 +63,8 @@ final class NutritionAPI {
         body.append("--\(boundary)--\r\n".data(using: .utf8)!)
 
         request.httpBody = body
-        
-        print("🚀 Sending meal estimate request...")
 
         let (data, response) = try await URLSession.shared.data(for: request)
-        
-        print("✅ Meal estimate response received")
 
         guard let httpResponse = response as? HTTPURLResponse,
               200..<300 ~= httpResponse.statusCode
