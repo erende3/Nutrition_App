@@ -90,10 +90,10 @@ This completes Phase 1 items 1–3. Plan: `docs/superpowers/plans/2026-09-25-mil
 
 **Accomplish**
 1. An Alembic baseline migration of the current schema.
-2. Day handling: `eaten_at` (UTC, timezone-aware) plus `local_date`. The client sends its IANA timezone in an `X-Timezone` header; if it's missing, fall back to the server's timezone. Filter in SQL by `(user_id, local_date)`. One shared day-query function replaces the three copies.
+2. Day handling: ~~`eaten_at` (UTC, timezone-aware)~~ plus `local_date`. *Superseded in part by Milestone 0.4, D6: `created_at` (naive UTC) was kept and `local_date` added; `eaten_at` is deferred to Phase 5, when meals become editable.* The client sends its IANA timezone in an `X-Timezone` header; if it's missing, fall back to the server's timezone. Filter in SQL by `(user_id, local_date)`. One shared day-query function replaces the three copies.
 3. Calorie goal safeguards, applied at every layer:
-   - realistic input ranges in `UserOnboardingRequest`;
-   - a pure function that calculates the goal, then clamps it between a floor and a ceiling and reports when it did;
+   - ~~realistic input ranges in `UserOnboardingRequest`;~~ *Deferred by Milestone 0.4, D9: the request limits are unchanged.*
+   - ~~a pure function that calculates the goal, then clamps it between a floor and a ceiling and reports when it did;~~ *Superseded by Milestone 0.4, D4 (option B): a goal of 0 or below falls back to the default 2200 and `goal_adjusted: true` reports it; positive goals are kept. Nutrition-policy floors and ceilings are a separate, undecided product decision.*
    - a database `CHECK (daily_calorie_goal > 0)`;
    - a zero-goal guard in the summary anyway.
 4. A non-blocking estimate endpoint: change the route to a plain `def` so FastAPI runs it in a thread pool (the smallest fix; `AsyncOpenAI` also works). Give the OpenAI client an explicit timeout and a small retry count.
@@ -108,13 +108,13 @@ This completes Phase 1 items 1–3. Plan: `docs/superpowers/plans/2026-09-25-mil
 
 **Decisions:** whether the timezone travels in a header or in the request body (header recommended).
 
-**Decided (2026-09-24):**
-- Development data in `nutrition.db` is wiped; no backfill logic.
-- The Alembic baseline starts from a fresh database.
-- An out-of-range calculated goal is **clamped and the user is notified**; onboarding is not rejected.
-- Safety bounds live in one settings object that can be changed through the environment, not scattered constants.
-- Production thresholds are decided separately; 1200 / 1500 kcal are placeholders only.
-- Zero, negative or clearly invalid goals must be impossible to store or serve.
+**Decided (2026-09-24), with later changes marked.** Milestone 0.4 revised some of these on 2026-09-25 (plan: `docs/superpowers/plans/2026-09-25-milestone-0.4-backend-correctness.md`):
+- ~~Development data in `nutrition.db` is wiped; no backfill logic.~~ *Superseded by 0.4, D2: the development database was migrated in place, with a backup, and existing meals' `local_date` was backfilled.*
+- ~~The Alembic baseline starts from a fresh database.~~ *Superseded by 0.4, D2: the baseline revision reproduces the existing schema, and existing databases are stamped at it.*
+- An invalid calculated goal is **replaced and the user is notified**; onboarding is not rejected. *As implemented in 0.4, D4: "replaced" means a goal of 0 or below becomes the default 2200, and the response carries `goal_adjusted: true`. Positive goals are not clamped. The iOS notice comes in Phase 2.*
+- ~~Safety bounds live in one settings object that can be changed through the environment, not scattered constants.~~ *Superseded by 0.4, D4: no goal bounds exist yet. When a nutrition policy is decided, its bounds should be configurable settings.*
+- Production thresholds are decided separately; 1200 / 1500 kcal are placeholders only. *Still open: nutrition-policy bounds are deferred, to be decided at the latest before the Phase 5 goal and macro features.*
+- Zero, negative or clearly invalid goals must be impossible to store or serve. *Done in 0.4 for zero and negative goals: the `CHECK` constraint, the fallback and the summary guard. "Clearly invalid" positive goals (e.g. 154 kcal) are left to the nutrition policy.*
 
 **Not yet:** the goals table (Phase 3), macro targets, auth, new endpoints.
 
