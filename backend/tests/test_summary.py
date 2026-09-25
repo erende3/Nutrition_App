@@ -2,7 +2,7 @@ from datetime import date, datetime, time, timedelta
 
 from database import SessionLocal
 from dependencies import get_or_create_default_user
-from models import Meal
+from models import Meal, User
 from services.summary import get_daily_summary
 
 DAY = date(2026, 3, 14)
@@ -66,3 +66,12 @@ def test_summary_rounds_percentage_to_one_decimal():
     summary = summary_for(3000, [(1000, at(DAY, 12))])
 
     assert summary["percentage"] == 33.3
+
+
+def test_summary_survives_a_non_positive_goal():
+    # The database forbids this goal; the summary must not fail if one appears.
+    with SessionLocal() as db:
+        summary = get_daily_summary(db, User(daily_calorie_goal=0), DAY)
+
+    assert summary["percentage"] == 0.0
+    assert summary["calories_remaining"] == 0

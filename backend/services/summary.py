@@ -31,9 +31,12 @@ def get_daily_summary(
         0,
     )
 
-    percentage = min(
-        (calories_consumed / daily_goal) * 100,
-        100,
+    # The database forbids a goal of 0 or below; guard anyway so a bad
+    # stored value cannot break the summary.
+    percentage = (
+        min((calories_consumed / daily_goal) * 100, 100)
+        if daily_goal > 0
+        else 0.0
     )
 
     return {

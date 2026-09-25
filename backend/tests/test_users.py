@@ -1,4 +1,8 @@
 import pytest
+from sqlalchemy.exc import IntegrityError
+
+from database import SessionLocal
+from models import User
 
 TYPICAL_PROFILE = {
     "age": 30,
@@ -72,3 +76,11 @@ def test_onboarding_with_non_positive_formula_goal_stores_the_default(client):
     assert response.json()["daily_calorie_goal"] == 2200
     assert response.json()["goal_adjusted"] is True
     assert client.get("/users/profile").json()["daily_calorie_goal"] == 2200
+
+
+@pytest.mark.parametrize("goal", [0, -1])
+def test_database_rejects_a_non_positive_goal(goal):
+    with SessionLocal() as db:
+        db.add(User(id=5, daily_calorie_goal=goal))
+        with pytest.raises(IntegrityError):
+            db.commit()

@@ -15,6 +15,7 @@ from alembic.autogenerate import compare_metadata
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.exc import IntegrityError
 
 import app as app_module
 import db_migrations
@@ -241,3 +242,41 @@ def test_python_app_migrates_before_serving(db_url, monkeypatch):
     app_module.main()
 
     assert revision_when_served == [head()]
+
+
+def insert_users_with_goals(url, goals):
+    run_sql(
+        url,
+        [
+            f"INSERT INTO users (id, daily_calorie_goal) VALUES ({user_id}, {goal})"
+            for user_id, goal in enumerate(goals, start=1)
+        ],
+    )
+
+
+def test_goal_migration_repairs_non_positive_goals_then_forbids_them(db_url):
+    alembic_cfg = db_migrations.alembic_config(db_url)
+    command.upgrade(alembic_cfg, BASELINE)
+    insert_users_with_goals(db_url, [0, -5, 2633])
+
+    command.upgrade(alembic_cfg, "0002_goal_positive_check")
+
+    assert rows(db_url, "SELECT id, daily_calorie_goal FROM users ORDER BY id") == [
+        (1, 2200),
+        (2, 2200),
+        (3, 2633),
+    ]
+    with pytest.raises(IntegrityError):
+        insert_users_with_goals(db_url, [0, 0, 0, 0])
+
+
+def test_goal_migration_downgrades_and_upgrades_again(db_url):
+    alembic_cfg = db_migrations.alembic_config(db_url)
+    command.upgrade(alembic_cfg, "0002_goal_positive_check")
+
+    command.downgrade(alembic_cfg, BASELINE)
+    insert_users_with_goals(db_url, [0])
+    run_sql(db_url, ["UPDATE users SET daily_calorie_goal = 1800"])
+    command.upgrade(alembic_cfg, "0002_goal_positive_check")
+
+    assert rows(db_url, "SELECT daily_calorie_goal FROM users") == [(1800,)]

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Float, ForeignKey, Integer, String, DateTime
+from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -12,6 +12,12 @@ DEFAULT_DAILY_CALORIE_GOAL = 2200
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint(
+            "daily_calorie_goal > 0",
+            name="ck_users_daily_calorie_goal_positive",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(
         Integer,
