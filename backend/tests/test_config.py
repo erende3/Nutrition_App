@@ -49,3 +49,17 @@ def test_settings_come_from_the_environment():
         "OPENAI_TIMEOUT_SECONDS": 12.5,
         "OPENAI_MAX_RETRIES": 0,
     }
+
+
+def test_blank_settings_fall_back_to_defaults():
+    assert load_settings(
+        DATABASE_URL="",
+        OPENAI_MODEL="",
+        OPENAI_TIMEOUT_SECONDS="",
+        OPENAI_MAX_RETRIES="",
+    ) == {
+        "DATABASE_URL": "sqlite:///./nutrition.db",
+        "OPENAI_MODEL": "gpt-4.1-mini",
+        "OPENAI_TIMEOUT_SECONDS": 60.0,
+        "OPENAI_MAX_RETRIES": 1,
+    }
