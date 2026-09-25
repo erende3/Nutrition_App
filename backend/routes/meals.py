@@ -1,34 +1,9 @@
-print("M1 - starting meals.py")
-
 import os
-print("M2 - os imported")
-
-from typing import Optional
-print("M3 - typing imported")
-
 from datetime import date
-print("M4 - datetime imported")
+from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-print("M5 - fastapi imports done")
-
 from sqlalchemy.orm import Session
-print("M6 - sqlalchemy imported")
-
-from database import SessionLocal
-print("M7 - database imported")
-
-from models import Meal, User
-print("M8 - models imported")
-
-from schemas import NutritionEstimate
-print("M9 - schemas imported")
-
-from services.nutrition_ai import estimate_nutrition
-print("M10 - nutrition_ai imported")
-
-from dependencies import get_db, get_or_create_default_user
-print("M11 - dependencies imported")
 
 from crud import (
     create_meal,
@@ -37,7 +12,11 @@ from crud import (
     get_meals_by_date,
     get_todays_meals,
 )
-print("M12 - crud imported")
+from database import SessionLocal
+from dependencies import get_db, get_or_create_default_user
+from models import Meal, User
+from schemas import NutritionEstimate
+from services.nutrition_ai import estimate_nutrition
 
 router = APIRouter(
     prefix="/meals",
