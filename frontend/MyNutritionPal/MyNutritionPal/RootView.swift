@@ -25,6 +25,15 @@ struct RootView: View {
                     Text(errorMessage)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+
+                    Button("Retry") {
+                        isLoading = true
+
+                        Task {
+                            await loadProfile()
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
                 .padding()
             } else if let profile {

@@ -19,9 +19,18 @@ struct MealHistoryView: View {
                 if isLoading {
                     ProgressView("Loading meals...")
                 } else if let errorMessage {
-                    Text(errorMessage)
-                        .foregroundStyle(.red)
-                        .padding()
+                    VStack(spacing: 12) {
+                        Text(errorMessage)
+                            .foregroundStyle(.red)
+
+                        Button("Retry") {
+                            Task {
+                                await loadMeals()
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+                    .padding()
                 } else if meals.isEmpty {
                     ContentUnavailableView(
                         "No Meals Yet",

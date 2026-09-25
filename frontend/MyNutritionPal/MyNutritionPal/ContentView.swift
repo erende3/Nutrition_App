@@ -271,6 +271,7 @@ struct DashboardView: View {
             dailyGoal = summary.daily_goal
             caloriesConsumed = summary.calories_consumed
             caloriesRemaining = summary.calories_remaining
+            errorMessage = nil
 
         } catch {
             errorMessage = error.localizedDescription
