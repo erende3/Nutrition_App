@@ -57,7 +57,7 @@ Blank values in `.env` count as unset.
 
 All settings are read in `backend/config.py`.
 
-**Days and timezones.** Each meal stores `local_date`, the user's calendar date when it was logged. Today's meals, clearing today and the daily summary use the date in the request's timezone: the optional `X-Timezone` header (an IANA name) or `DEFAULT_TIMEZONE`. An unknown `X-Timezone` returns 400. The iOS app doesn't send the header yet, so the server's timezone is used.
+**Days and timezones.** Each meal stores `local_date`, the user's calendar date when it was logged. Today's meals, clearing today and the daily summary use the date in the request's timezone: the optional `X-Timezone` header (an IANA name) or `DEFAULT_TIMEZONE`. An unknown `X-Timezone` returns 400. The iOS app sends the phone's timezone on every request, so "today" is the phone's day; `DEFAULT_TIMEZONE` applies to clients that don't send the header.
 
 **Calorie goals.** A stored goal is always positive. If the calculation gives 0 or less (only possible for extreme inputs), onboarding stores the default goal (2200) and returns `goal_adjusted: true`. There are no minimum or maximum goal policies yet.
 
@@ -67,4 +67,39 @@ When an estimate fails, the API returns 503 (estimator not configured, e.g. no A
 
 Open `frontend/MyNutritionPal/MyNutritionPal.xcodeproj` in Xcode (iOS 18.5+).
 
-The backend address is currently hardcoded as `baseURL` in `frontend/MyNutritionPal/MyNutritionPal/NutritionAPI.swift`. Set it to `http://<your Mac's LAN IP>:8000`, and keep the phone and the Mac on the same network.
+### Backend address
+
+Debug builds read the backend address from `frontend/MyNutritionPal/Config/Local.xcconfig`, which is git-ignored. Create it once:
+
+```bash
+cd frontend/MyNutritionPal/Config
+cp Local.xcconfig.example Local.xcconfig
+scutil --get LocalHostName     # e.g. Erics-MacBook-Pro
+```
+
+Then set `API_BASE_URL` in `Local.xcconfig`, and rebuild:
+
+```
+API_BASE_URL = http:/$()/Erics-MacBook-Pro.local:8000
+```
+
+- Write `http:/$()/`, not `http://`: in an xcconfig file, `//` starts a comment.
+- The Mac's `.local` name stays the same when you change networks (home Wi-Fi, Personal Hotspot), so switching networks doesn't need a rebuild. If a network blocks it, use the Mac's LAN IP instead (`ipconfig getifaddr en0`), e.g. `http:/$()/192.168.1.20:8000`, and rebuild when it changes.
+- Keep the phone and the Mac on the same network, and allow the app's Local Network prompt on first launch (Settings > Privacy & Security > Local Network).
+- Without `Local.xcconfig`, the app builds but says no server address is set. Release builds have no address until there's a production backend.
+- The app allows plain HTTP only to local-network hosts (`NSAllowsLocalNetworking`).
+
+### How the app calls the backend
+
+All requests go through `APIClient.swift`. It sends the phone's timezone in `X-Timezone`, waits up to 300 s for a meal estimate and 20 s for anything else, and never retries on its own (an estimate saves the meal, so a retry could log it twice). Failures show the backend's `detail` message, or say which server couldn't be reached; the profile and History screens have a Retry button.
+
+### Tests
+
+```bash
+cd frontend/MyNutritionPal
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test \
+  -scheme MyNutritionPal -destination 'platform=iOS Simulator,name=iPhone 16' \
+  -only-testing:MyNutritionPalTests
+```
+
+Use a simulator with iOS 18.5 or later. The tests use a stubbed network and never call the backend.

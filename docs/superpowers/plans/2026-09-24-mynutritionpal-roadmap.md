@@ -86,6 +86,19 @@ This completes Phase 1 items 1–3. Plan: `docs/superpowers/plans/2026-09-25-mil
 - **Still open from Phase 1:** item 6, the upload size limit, which waits for Phase 2's image downscaling.
 - **Moved to Phase 2:** iOS sending `X-Timezone`, and showing a notice when `goal_adjusted` is true.
 
+## Milestone 0.5: iOS networking foundation (added 2026-09-25)
+
+The first slice of Phase 2. Plan: `docs/superpowers/plans/2026-09-25-milestone-0.5-ios-networking.md`.
+
+- **Base URL from the build configuration.** `API_BASE_URL` (Config/*.xcconfig, set per developer in the git-ignored `Config/Local.xcconfig`) → the `APIBaseURL` Info.plist key → `AppConfig`. The hardcoded IP is gone. The Mac's `.local` name survives network changes. Release has no URL until Phase 8.
+- **ATS:** `NSAllowsLocalNetworking` replaces `NSAllowsArbitraryLoads`.
+- **`APIClient`:** one request path for all six calls. It sends `X-Timezone` on every request, uses a 300 s timeout for estimates and 20 s otherwise, and never retries automatically.
+- **`APIError`:** shows the backend's `detail`, a generic message for 422, and connection failures that name the server. Retry on the Root and History error screens; the Dashboard clears stale errors.
+- **Tests:** `URLProtocol`-stubbed client tests, config, error and decoding tests on iOS; the backend's error body shapes are pinned (`tests/test_error_contract.py`). No backend production change.
+- **Kept on purpose:** the snake_case model structs and plain `JSONDecoder` (switching to `convertFromSnakeCase` would break the explicit `CodingKeys`).
+
+**Still in Phase 2:** the image pipeline with `PhotosPicker` and the upload limit (Phase 1 item 6), planned as Milestone 0.6; the shared `NutritionStore`, full loading/empty states, the `goal_adjusted` notice and onboarding input ranges, planned as Milestone 0.7.
+
 ## Phase 1: Backend correctness
 
 **Accomplish**
