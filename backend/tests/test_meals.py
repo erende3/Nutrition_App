@@ -1,7 +1,6 @@
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, time, timedelta, timezone
-from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -279,34 +278,14 @@ def test_summary_excludes_meals_from_other_days(client):
     assert summary["calories_consumed"] == 650
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Known bug (Phase 1): created_at is UTC but 'today' is the server's local date",
-)
-def test_late_evening_meal_counts_toward_that_local_day(client, server_timezone):
-    server_timezone("America/New_York")
-    today = date.today()
-    # 23:30 in New York is 03:30 UTC the next day. Store the meal exactly
-    # as the current code would if it were logged at that moment.
-    eaten_at = datetime.combine(today, time(23, 30), tzinfo=ZoneInfo("America/New_York"))
-    client.get("/users/profile")  # creates user 1
-    with SessionLocal() as db:
-        db.add(
-            Meal(
-                user_id=1,
-                meal_name="Late snack",
-                calories=300,
-                protein_g=10,
-                carbohydrates_g=30,
-                fat_g=12,
-                confidence=0.7,
-                calorie_low=250,
-                calorie_high=350,
-                created_at=eaten_at.astimezone(timezone.utc).replace(tzinfo=None),
-            )
-        )
-        db.commit()
+def test_late_evening_meal_counts_toward_that_local_day(client, monkeypatch, fake_estimate):
+    monkeypatch.setattr(config, "DEFAULT_TIMEZONE", "America/New_York")
+    # 23:30 in New York is 03:30 UTC the next day.
+    freeze_clock(monkeypatch, datetime(2026, 9, 26, 3, 30, tzinfo=timezone.utc))
+    late_snack = fake_estimate.model_copy(update={"meal_name": "Late snack", "calories": 300})
+    monkeypatch.setattr(services.meals, "estimate_nutrition", lambda **kwargs: late_snack)
 
+    client.post("/meals/estimate", data={"message": "late snack"})
     summary = client.get("/summary/daily").json()
 
     assert summary["calories_consumed"] == 300
@@ -341,3 +320,76 @@ def test_logged_meal_without_header_uses_the_server_default_zone(client, monkeyp
     log_meal(client)
 
     assert stored_meal_times() == [(datetime(2026, 9, 26, 3, 30), date(2026, 9, 25))]
+
+
+def insert_meal_on(local_date, meal_name, created_at=None):
+    with SessionLocal() as db:
+        db.add(
+            Meal(
+                user_id=1,
+                meal_name=meal_name,
+                calories=400,
+                protein_g=20,
+                carbohydrates_g=40,
+                fat_g=15,
+                confidence=0.7,
+                calorie_low=350,
+                calorie_high=450,
+                created_at=created_at or datetime.combine(local_date, time(12, 0)),
+                local_date=local_date,
+            )
+        )
+        db.commit()
+
+
+TOKYO = {"X-Timezone": "Asia/Tokyo"}
+
+
+def test_today_endpoints_follow_the_timezone_header(client, monkeypatch):
+    # 20:00 UTC on Sep 25 is already Sep 26 in Tokyo.
+    freeze_clock(monkeypatch, datetime(2026, 9, 25, 20, 0, tzinfo=timezone.utc))
+    client.post("/meals/estimate", data={"message": "ramen"}, headers=TOKYO)
+    insert_meal_on(date(2026, 9, 25), "UTC-day lunch")
+
+    tokyo_meals = [meal["meal_name"] for meal in client.get("/meals/today", headers=TOKYO).json()]
+    utc_meals = [meal["meal_name"] for meal in client.get("/meals/today").json()]
+    tokyo_summary = client.get("/summary/daily", headers=TOKYO).json()
+
+    assert tokyo_meals == ["Chicken and rice"]
+    assert utc_meals == ["UTC-day lunch"]
+    assert tokyo_summary["date"] == "2026-09-26"
+    assert tokyo_summary["calories_consumed"] == 650
+
+
+def test_clear_today_only_clears_the_header_timezones_day(client, monkeypatch):
+    freeze_clock(monkeypatch, datetime(2026, 9, 25, 20, 0, tzinfo=timezone.utc))
+    client.post("/meals/estimate", data={"message": "ramen"}, headers=TOKYO)
+    insert_meal_on(date(2026, 9, 25), "UTC-day lunch")
+
+    response = client.delete("/meals/today", headers=TOKYO)
+
+    assert response.json()["deleted_meals"] == 1
+    assert [meal["meal_name"] for meal in client.get("/meals/today").json()] == ["UTC-day lunch"]
+
+
+def test_meals_for_date_use_the_local_date_not_the_utc_date(client):
+    client.get("/users/profile")  # creates user 1
+    # Logged at 21:30 in New York on Sep 25, which is Sep 26 in UTC.
+    insert_meal_on(date(2026, 9, 25), "Evening meal", created_at=datetime(2026, 9, 26, 1, 30))
+
+    on_local_day = client.get("/meals/date/2026-09-25").json()
+    on_utc_day = client.get("/meals/date/2026-09-26").json()
+
+    assert [meal["meal_name"] for meal in on_local_day] == ["Evening meal"]
+    assert on_utc_day == []
+
+
+@pytest.mark.parametrize(
+    "method, path",
+    [("get", "/meals/today"), ("delete", "/meals/today"), ("get", "/summary/daily")],
+)
+def test_unknown_timezone_header_is_rejected(client, method, path):
+    response = client.request(method, path, headers={"X-Timezone": "Mars/Olympus_Mons"})
+
+    assert response.status_code == 400
+    assert set(response.json()) == {"detail"}

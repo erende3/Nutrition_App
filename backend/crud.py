@@ -34,41 +34,32 @@ def create_meal(
     return meal
 
 
-def get_todays_meals(
-    db: Session,
-    user: User,
-) -> list[Meal]:
-    return get_meals_by_date(
-        db=db,
-        user=user,
-        target_date=date.today(),
-    )
-
 def get_meals_by_date(
     db: Session,
     user: User,
     target_date: date,
-):
-    meals = (
+) -> list[Meal]:
+    """The user's meals on one local calendar date, newest first."""
+
+    return (
         db.query(Meal)
-        .filter(Meal.user_id == user.id)
+        .filter(
+            Meal.user_id == user.id,
+            Meal.local_date == target_date,
+        )
         .order_by(Meal.created_at.desc())
         .all()
     )
 
-    return [
-        meal
-        for meal in meals
-        if meal.created_at.date() == target_date
-    ]
-
 def delete_todays_meals(
     db: Session,
     user: User,
+    today: date,
 ) -> int:
-    todays_meals = get_todays_meals(
+    todays_meals = get_meals_by_date(
         db=db,
         user=user,
+        target_date=today,
     )
 
     deleted_count = len(todays_meals)

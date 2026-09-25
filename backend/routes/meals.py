@@ -11,7 +11,6 @@ from crud import (
     delete_meal,
     delete_todays_meals,
     get_meals_by_date,
-    get_todays_meals,
 )
 from dependencies import get_current_user, get_db, get_request_timezone
 from models import User
@@ -21,6 +20,7 @@ from schemas import (
     MealResponse,
     NutritionEstimate,
 )
+from services import clock
 from services.meals import log_meal
 from services.nutrition_ai import (
     EstimatorFailed,
@@ -48,10 +48,12 @@ UNEXPECTED_ESTIMATE_ERROR = (500, "Something went wrong while logging the meal."
 def meals_today(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    tz: ZoneInfo = Depends(get_request_timezone),
 ):
-    return get_todays_meals(
+    return get_meals_by_date(
         db=db,
         user=user,
+        target_date=clock.local_today(tz),
     )
 
 @router.post("/estimate", response_model=NutritionEstimate)
@@ -121,10 +123,12 @@ async def estimate_meal(
 def clear_todays_meals(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    tz: ZoneInfo = Depends(get_request_timezone),
 ) -> ClearMealsResponse:
     deleted_count = delete_todays_meals(
         db=db,
         user=user,
+        today=clock.local_today(tz),
     )
 
     return ClearMealsResponse(

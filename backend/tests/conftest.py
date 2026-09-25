@@ -10,8 +10,9 @@ os.environ["DATABASE_URL"] = "sqlite:///" + str(
 )
 os.environ["OPENAI_API_KEY"] = "test-key-not-used"
 
-# Run the suite in UTC so "today" is the same date on the server clock
-# and in stored UTC timestamps. Timezone tests override this.
+# Run the suite in UTC, so DEFAULT_TIMEZONE is UTC and "today" matches the
+# stored UTC timestamps. Timezone tests set config.DEFAULT_TIMEZONE or the
+# X-Timezone header and freeze services.clock instead.
 os.environ["TZ"] = "UTC"
 time.tzset()
 
@@ -92,16 +93,3 @@ def fake_estimate():
 def client():
     with TestClient(app_module.app) as test_client:
         yield test_client
-
-
-@pytest.fixture
-def server_timezone():
-    """Switch the process timezone for one test, then restore UTC."""
-
-    def set_timezone(name):
-        os.environ["TZ"] = name
-        time.tzset()
-
-    yield set_timezone
-    os.environ["TZ"] = "UTC"
-    time.tzset()
