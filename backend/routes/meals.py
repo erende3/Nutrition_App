@@ -12,9 +12,7 @@ from crud import (
     get_meals_by_date,
     get_todays_meals,
 )
-from database import SessionLocal
 from dependencies import get_db, get_or_create_default_user
-from models import Meal, User
 from schemas import NutritionEstimate
 from services.nutrition_ai import estimate_nutrition
 
@@ -121,11 +119,6 @@ def clear_todays_meals(
     db: Session = Depends(get_db),
 ) -> dict:
     user = get_or_create_default_user(db)
-
-    todays_meals = get_todays_meals(
-        db=db,
-        user=user,
-    )
 
     deleted_count = delete_todays_meals(
         db=db,

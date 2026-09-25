@@ -3,7 +3,6 @@ from datetime import date
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from database import SessionLocal
 from models import Meal, User
 from dependencies import get_db, get_or_create_default_user
 
