@@ -51,6 +51,7 @@ The schema is managed by Alembic (`backend/migrations/`). Run commands from `bac
 | `OPENAI_MODEL` | No | `gpt-4.1-mini` | Model used for meal estimates. |
 | `OPENAI_TIMEOUT_SECONDS` | No | `60` | Per-attempt timeout for the OpenAI request. Keep the worst case (timeout × (retries + 1)) under the iOS app's 300-second request timeout. |
 | `OPENAI_MAX_RETRIES` | No | `1` | How many times the OpenAI SDK retries a failed request. |
+| `MAX_IMAGE_BYTES` | No | `10485760` (10 MiB) | Largest meal photo `POST /meals/estimate` accepts. Must be positive, or startup stops. |
 | `DEFAULT_TIMEZONE` | No | The server's timezone (`TZ` or `/etc/localtime`), else `UTC` | IANA timezone (e.g. `America/New_York`) that decides "today" when a request has no `X-Timezone` header, and that migration `0003` uses to date existing meals. An unknown name stops startup. |
 
 Blank values in `.env` count as unset.
@@ -62,6 +63,8 @@ All settings are read in `backend/config.py`.
 **Calorie goals.** A stored goal is always positive. If the calculation gives 0 or less (only possible for extreme inputs), onboarding stores the default goal (2200) and returns `goal_adjusted: true`. There are no minimum or maximum goal policies yet.
 
 When an estimate fails, the API returns 503 (estimator not configured, e.g. no API key), 504 (the AI provider timed out), 502 (the AI provider failed) or 500 (anything else), with a generic `detail` message. The underlying error is logged by the server, never returned to the client.
+
+**Meal photos.** An image sent to `POST /meals/estimate` must be JPEG, PNG or WebP, and its bytes must start like that type of file; otherwise the API returns 400. An image over `MAX_IMAGE_BYTES` returns 413. In both cases nothing is estimated or saved. Photos aren't stored: they go to the AI provider and are discarded.
 
 ## iOS app
 
@@ -93,13 +96,17 @@ API_BASE_URL = http:/$()/Erics-MacBook-Pro.local:8000
 
 All requests go through `APIClient.swift`. It sends the phone's timezone in `X-Timezone`, waits up to 300 s for a meal estimate and 20 s for anything else, and never retries on its own (an estimate saves the meal, so a retry could log it twice). Failures show the backend's `detail` message, or say which server couldn't be reached; the profile and History screens have a Retry button.
 
+### Meal photos
+
+**Take Photo** uses the camera and appears only when the device has a usable one. **Choose Photo** picks from the photo library (`PhotosPicker`, which needs no photo-library permission). Either way, the app prepares the photo in the background as soon as it's picked (`MealPhoto.swift`): at most 1536 px on the long edge, upright, JPEG at quality 0.7, and without the original's metadata, so no location is sent. A typical phone photo uploads at a few hundred KB.
+
 ### Tests
 
 ```bash
 cd frontend/MyNutritionPal
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test \
   -scheme MyNutritionPal -destination 'platform=iOS Simulator,name=iPhone 16' \
-  -only-testing:MyNutritionPalTests
+  -only-testing:MyNutritionPalTests API_BASE_URL=
 ```
 
-Use a simulator with iOS 18.5 or later. The unit tests use a stubbed network. Xcode launches the app itself as the test host, though, and the app makes its usual launch requests (reading the profile and today's summary) to the server in `Local.xcconfig` if it's reachable.
+Use a simulator with iOS 18.5 or later. The unit tests use a stubbed network. Xcode launches the app itself as the test host, though, and the app makes its usual launch requests (reading the profile and today's summary) to the configured server. `API_BASE_URL=` on the command line leaves the address empty, so the test host makes no requests.

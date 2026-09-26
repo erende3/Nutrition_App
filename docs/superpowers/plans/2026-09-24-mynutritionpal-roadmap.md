@@ -29,6 +29,8 @@
 
 ## Where the single-user assumption lives today
 
+*Historical: this describes the code on 2026-09-24. Milestone 0.3 replaced the direct calls with `get_current_user`, and Milestone 0.4 replaced the server-local "today" with `local_date` and `X-Timezone`. The single user (id 1), the single goal column and SQLite remain.*
+
 - `get_or_create_default_user(db)` is called directly in 8 route handlers: `routes/meals.py:51,121,144,165,188`, `routes/summary.py:64`, `routes/users.py:40,62`.
 - User 1 is created implicitly (`dependencies.py:16-29`), and onboarding overwrites it.
 - There is one goal column, `users.daily_calorie_goal`, with no history (`models.py:48`), read directly by `summary.py:39`.
@@ -99,6 +101,16 @@ The first slice of Phase 2. Plan: `docs/superpowers/plans/2026-09-25-milestone-0
 
 **Still in Phase 2:** the image pipeline with `PhotosPicker` and the upload limit (Phase 1 item 6), planned as Milestone 0.6; the shared `NutritionStore`, full loading/empty states, the `goal_adjusted` notice and onboarding input ranges, planned as Milestone 0.7.
 
+## Milestone 0.6: photo pipeline (added 2026-09-25)
+
+This completes Phase 1 item 6 and the photo part of Phase 2. Plan: `docs/superpowers/plans/2026-09-25-milestone-0.6-photo-pipeline.md`.
+
+- **Client downscaling.** `MealPhoto` turns every picked photo into the upload JPEG: at most 1536 px on the long edge, upright, quality 0.7, with no source metadata (so no location). It runs in a background task right after the pick, so nothing is encoded on the main thread, and the Dashboard keeps only that JPEG and its preview. This size and quality policy is the client's contract; the app doesn't recompress to reach a byte target.
+- **Photo sources.** Choose Photo (`PhotosPicker`) next to Take Photo. Take Photo appears only when the camera source is available. (The iOS 18.6 simulator provides a simulated camera, so there it's shown.)
+- **Upload limit.** `MAX_IMAGE_BYTES` (default 10 MiB): the route reads at most one byte past it and returns 413 above it. Uploads must also start with the signature of their declared type (JPEG, PNG or WebP), or they get a 400. Nothing is estimated or saved in either case. The HTTP layer still accepts any body size; a request-size cap belongs to the production deployment (Phase 8).
+- **No schema or response-shape change.** Meal `source` and the image reference stay in Phase 3.
+- **Deferred to 0.7:** automatic recovery after a network change (the 0.5 observation). 0.6's device acceptance records whether History's Retry recovers without a relaunch.
+
 ## Phase 1: Backend correctness
 
 **Accomplish**
@@ -110,8 +122,8 @@ The first slice of Phase 2. Plan: `docs/superpowers/plans/2026-09-25-milestone-0
    - a database `CHECK (daily_calorie_goal > 0)`;
    - a zero-goal guard in the summary anyway.
 4. A non-blocking estimate endpoint: change the route to a plain `def` so FastAPI runs it in a thread pool (the smallest fix; `AsyncOpenAI` also works). Give the OpenAI client an explicit timeout and a small retry count.
-5. Consistent errors: log exceptions on the server and return a generic message with an error code. OpenAI timeout → 504; bad input → 400 or 422. Exception text never goes to the client.
-6. An upload limit: reject images over roughly 10 MB.
+5. Consistent errors: log exceptions on the server and return a generic message with an error code. *Done in Milestone 0.3 except the error codes, which moved to the Phase 3 error envelope.* OpenAI timeout → 504; bad input → 400 or 422. Exception text never goes to the client.
+6. An upload limit: reject images over roughly 10 MB. *Done in Milestone 0.6: `MAX_IMAGE_BYTES`, 10 MiB by default, returns 413.*
 
 **Why now:** the confirmed bugs break the core promise that a meal counts toward the right day. History and macros must not be built on wrong dates.
 
@@ -142,13 +154,13 @@ The first slice of Phase 2. Plan: `docs/superpowers/plans/2026-09-25-milestone-0
 
 **Accomplish**
 - The base URL comes from the build configuration (xcconfig → Info.plist key): Debug uses your LAN IP; Release uses the production URL, empty until Phase 8. Arbitrary HTTP loads are allowed only for local-network development.
-- Remove `forceOnboarding`. Keep your testing workflow with a Debug-only launch argument (e.g. `-resetOnboarding`).
+- Remove `forceOnboarding`. ~~Keep your testing workflow with a Debug-only launch argument (e.g. `-resetOnboarding`).~~ *Removed in `10b7a8d`. The launch argument was superseded: onboarding state lives on the server (`onboarding_complete`), so a client flag can't reset it; re-onboarding needs a fresh database.*
 - An `APIClient` with:
   - one request function;
-  - a shared decoder using `.convertFromSnakeCase`, with models renamed to camelCase;
+  - ~~a shared decoder using `.convertFromSnakeCase`, with models renamed to camelCase;~~ *Superseded by Milestone 0.5, D7: the models keep snake_case names or explicit `CodingKeys`; renaming waits for the Phase 3 model changes.*
   - a typed `APIError` that shows the backend's error message;
   - the `X-Timezone` header on every request.
-- An image pipeline: downscale to about 1024–1536 px on the long edge, JPEG at about 0.7 quality, off the main thread. Check the camera is available, and offer `PhotosPicker` as a fallback or alternative.
+- An image pipeline: downscale to about 1024–1536 px on the long edge, JPEG at about 0.7 quality, off the main thread. Check the camera is available, and offer `PhotosPicker` as a fallback or alternative. *Done in Milestone 0.6 (1536 px, 0.7).*
 - Loading, error and empty states with a retry button on the Root, Dashboard and History screens. Clear stale errors after a successful refresh.
 - A shared `@Observable` `NutritionStore` (today's summary and meals), so the Dashboard and History read the same state.
 - Tests: decoding tests against fixture JSON, `APIClient` tests with a stubbed `URLProtocol`, and onboarding unit-conversion tests.
@@ -166,22 +178,22 @@ The first slice of Phase 2. Plan: `docs/superpowers/plans/2026-09-25-milestone-0
 **Done when:**
 - A fresh install onboards once, and relaunching goes straight to the Dashboard.
 - Backend error messages appear to the user in plain language.
-- A 12 MP photo uploads at under about 500 KB.
-- The app runs on a simulator with no camera.
+- A 12 MP photo uploads at under about 500 KB. *0.6 checks this empirically on the device; the contract is the 1536 px / 0.7 policy, not a byte size.*
+- The app runs on a simulator with no camera. *The iOS 18.6 simulator provides a simulated camera; 0.6 hides Take Photo whenever the camera source is unavailable.*
 - The Xcode tests pass.
 
 ## Phase 3: Data model and API contract for growth
 
 **Accomplish**
-- A `get_current_user` dependency replaces all 8 direct calls (it still returns user 1). Audit that every query is filtered by user.
-- Pydantic response models for every route, one error format, and the `/v1` prefix.
+- A `get_current_user` dependency replaces all 8 direct calls (it still returns user 1). Audit that every query is filtered by user. *Done in Milestone 0.3.*
+- Pydantic response models for every route, one error format, and the `/v1` prefix. *Response models done in Milestone 0.3; the error format and `/v1` are still open.*
 - New meal fields:
   - `source` (text / photo / voice);
   - `description` (the user's own text);
   - `ai_provider`, `ai_model`, `prompt_version`;
   - `ai_payload` (a JSON column with assumptions and per-item breakdown);
   - `edited_at`.
-  - Confidence and calorie range are exposed in the API.
+  - Confidence and calorie range are exposed in the API. *Done in Milestone 0.3 (`MealResponse`).*
 - A `daily_goals` table. Onboarding writes a row. The summary for date D uses the latest row whose `effective_date` is on or before D. Migrate `users.daily_calorie_goal` into it, then remove the column.
 - A day endpoint, `GET /v1/days/{date}`, returning that day's meals, calorie and macro totals, and goal. It replaces the today-only endpoints.
 - An estimator boundary: `estimate_nutrition(input) -> EstimateResult`, with one provider adapter module and the model chosen by config. The LLM schema is separate from the API schema.
@@ -351,6 +363,8 @@ This phase can be folded into Phase 8 if you release early.
 ---
 
 ## Immediate next step
+
+*Historical: this was the first step on 2026-09-24. The milestone sections above (0.3 onward) record the current position.*
 
 **Phase 0**, starting with **Milestone 0.1: backend safety net**:
 
