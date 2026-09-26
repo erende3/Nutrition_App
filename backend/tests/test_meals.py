@@ -13,6 +13,12 @@ from services import clock
 from services.nutrition_ai import EstimatorFailed, EstimatorNotConfigured, EstimatorTimeout
 
 
+# The start of a real file of each accepted type, which the upload check reads.
+JPEG_BYTES = b"\xff\xd8\xff\xe0jpeg-bytes"
+PNG_BYTES = b"\x89PNG\r\n\x1a\npng-bytes"
+WEBP_BYTES = b"RIFF\x10\x00\x00\x00WEBPVP8 webp-bytes"
+
+
 def log_meal(client, message="chicken and rice", files=None):
     return client.post("/meals/estimate", data={"message": message}, files=files)
 
@@ -30,10 +36,10 @@ def test_estimate_returns_estimate_and_passes_text_to_estimator(
 
 
 def test_estimate_passes_image_to_estimator(client, fake_estimator):
-    response = log_meal(client, files={"image": ("meal.jpg", b"jpeg-bytes", "image/jpeg")})
+    response = log_meal(client, files={"image": ("meal.jpg", JPEG_BYTES, "image/jpeg")})
 
     assert response.status_code == 200
-    assert fake_estimator[0]["image_bytes"] == b"jpeg-bytes"
+    assert fake_estimator[0]["image_bytes"] == JPEG_BYTES
     assert fake_estimator[0]["image_content_type"] == "image/jpeg"
 
 
@@ -106,6 +112,39 @@ def test_image_over_the_size_limit_is_rejected_and_nothing_saved(
     assert fake_estimator == []
     assert client.get("/meals/today").json() == []
     assert client.get("/summary/daily").json()["calories_consumed"] == 0
+
+
+@pytest.mark.parametrize(
+    "content_type, image",
+    [("image/jpeg", JPEG_BYTES), ("image/png", PNG_BYTES), ("image/webp", WEBP_BYTES)],
+)
+def test_image_of_the_declared_type_is_accepted(client, fake_estimator, content_type, image):
+    response = log_meal(client, files={"image": ("meal", image, content_type)})
+
+    assert response.status_code == 200
+    assert fake_estimator[0]["image_bytes"] == image
+
+
+@pytest.mark.parametrize(
+    "content_type, image",
+    [
+        ("image/jpeg", b"not an image at all"),
+        ("image/jpeg", PNG_BYTES),
+        ("image/webp", b"RIFF\x10\x00\x00\x00AVI LIST"),
+    ],
+    ids=["garbage", "png-declared-as-jpeg", "riff-but-not-webp"],
+)
+def test_image_that_is_not_its_declared_type_is_rejected_and_nothing_saved(
+    client, fake_estimator, content_type, image
+):
+    response = log_meal(client, files={"image": ("meal", image, content_type)})
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "detail": "The image isn't a valid JPEG, PNG, or WebP file."
+    }
+    assert fake_estimator == []
+    assert client.get("/meals/today").json() == []
 
 
 def test_default_size_limit_rejects_an_image_just_over_10_mib(client, fake_estimator):

@@ -45,6 +45,14 @@ ESTIMATE_ERRORS = {
 }
 UNEXPECTED_ESTIMATE_ERROR = (500, "Something went wrong while logging the meal.")
 
+# Accepted image types, each with a check that the bytes really start like
+# that kind of file (the declared content type comes from the client).
+IMAGE_SIGNATURES = {
+    "image/jpeg": lambda data: data.startswith(b"\xff\xd8\xff"),
+    "image/png": lambda data: data.startswith(b"\x89PNG\r\n\x1a\n"),
+    "image/webp": lambda data: data[:4] == b"RIFF" and data[8:12] == b"WEBP",
+}
+
 @router.get("/today", response_model=list[MealResponse])
 def meals_today(
     db: Session = Depends(get_db),
@@ -74,13 +82,7 @@ async def estimate_meal(
     image_content_type = None
 
     if image is not None:
-        allowed_types = {
-            "image/jpeg",
-            "image/png",
-            "image/webp",
-        }
-
-        if image.content_type not in allowed_types:
+        if image.content_type not in IMAGE_SIGNATURES:
             raise HTTPException(
                 status_code=400,
                 detail="Image must be JPEG, PNG, or WebP.",
@@ -100,6 +102,12 @@ async def estimate_meal(
             raise HTTPException(
                 status_code=413,
                 detail="The photo is too large. Please choose a smaller photo.",
+            )
+
+        if not IMAGE_SIGNATURES[image.content_type](image_bytes):
+            raise HTTPException(
+                status_code=400,
+                detail="The image isn't a valid JPEG, PNG, or WebP file.",
             )
 
         image_content_type = image.content_type

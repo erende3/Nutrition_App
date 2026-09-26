@@ -66,6 +66,16 @@ def test_image_too_large_is_a_string_detail(client, monkeypatch):
     assert_string_detail(response, 413)
 
 
+def test_image_not_of_its_declared_type_is_a_string_detail(client):
+    response = client.post(
+        "/meals/estimate",
+        data={"message": "lunch"},
+        files={"image": ("meal.jpg", b"not an image", "image/jpeg")},
+    )
+
+    assert_string_detail(response, 400)
+
+
 @pytest.mark.parametrize(
     "method, path",
     [
