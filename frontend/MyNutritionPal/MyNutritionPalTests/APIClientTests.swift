@@ -208,6 +208,19 @@ struct APIClientTests {
         }
     }
 
+    /// The backend's 413 text is what the user sees for an oversized photo.
+    @Test func photoTooLargeShowsTheBackendMessage() async throws {
+        let api = client()
+        let message = "The photo is too large. Please choose a smaller photo."
+        respond(#"{"detail": "The photo is too large. Please choose a smaller photo."}"#, status: 413)
+
+        let error = await #expect(throws: APIError.self) {
+            _ = try await api.estimateMeal(message: "lunch", imageData: Data([0xFF, 0xD8, 0xFF]))
+        }
+        #expect(error == .server(status: 413, message: message))
+        #expect(error?.localizedDescription == message)
+    }
+
     @Test func notFoundOnDeleteIsAServerError() async {
         let api = client()
         respond(#"{"detail": "Meal not found."}"#, status: 404)

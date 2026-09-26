@@ -75,6 +75,49 @@ def test_estimate_rejects_empty_image(client, fake_estimator):
     assert fake_estimator == []
 
 
+def jpeg_of_size(size):
+    """Bytes of the given length that start like a JPEG."""
+    return b"\xff\xd8\xff" + b"\x00" * (size - 3)
+
+
+def test_image_at_the_size_limit_is_accepted(client, monkeypatch, fake_estimator):
+    monkeypatch.setattr(config, "MAX_IMAGE_BYTES", 64)
+    image = jpeg_of_size(64)
+
+    response = log_meal(client, files={"image": ("meal.jpg", image, "image/jpeg")})
+
+    assert response.status_code == 200
+    assert fake_estimator[0]["image_bytes"] == image
+
+
+def test_image_over_the_size_limit_is_rejected_and_nothing_saved(
+    client, monkeypatch, fake_estimator
+):
+    monkeypatch.setattr(config, "MAX_IMAGE_BYTES", 64)
+
+    response = log_meal(
+        client, files={"image": ("meal.jpg", jpeg_of_size(65), "image/jpeg")}
+    )
+
+    assert response.status_code == 413
+    assert response.json() == {
+        "detail": "The photo is too large. Please choose a smaller photo."
+    }
+    assert fake_estimator == []
+    assert client.get("/meals/today").json() == []
+    assert client.get("/summary/daily").json()["calories_consumed"] == 0
+
+
+def test_default_size_limit_rejects_an_image_just_over_10_mib(client, fake_estimator):
+    response = log_meal(
+        client,
+        files={"image": ("meal.jpg", jpeg_of_size(10 * 1024 * 1024 + 1), "image/jpeg")},
+    )
+
+    assert response.status_code == 413
+    assert fake_estimator == []
+
+
 SENTINEL = "internal-detail-sentinel-7f3a"
 
 

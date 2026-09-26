@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
+import config as settings
 from crud import (
     delete_meal,
     delete_todays_meals,
@@ -85,12 +86,20 @@ async def estimate_meal(
                 detail="Image must be JPEG, PNG, or WebP.",
             )
 
-        image_bytes = await image.read()
+        # Read at most one byte past the limit, so an oversized upload is
+        # never loaded whole. Starlette has already spooled it to disk.
+        image_bytes = await image.read(settings.MAX_IMAGE_BYTES + 1)
 
         if not image_bytes:
             raise HTTPException(
                 status_code=400,
                 detail="The image is empty.",
+            )
+
+        if len(image_bytes) > settings.MAX_IMAGE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail="The photo is too large. Please choose a smaller photo.",
             )
 
         image_content_type = image.content_type

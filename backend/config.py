@@ -19,6 +19,13 @@ OPENAI_MODEL = _setting("OPENAI_MODEL", "gpt-4.1-mini")
 OPENAI_TIMEOUT_SECONDS = float(_setting("OPENAI_TIMEOUT_SECONDS", "60"))
 OPENAI_MAX_RETRIES = int(_setting("OPENAI_MAX_RETRIES", "1"))
 
+# The largest meal photo POST /meals/estimate accepts, in bytes. The app
+# uploads photos of a few hundred KB; older builds sent up to about 5 MB.
+MAX_IMAGE_BYTES = int(_setting("MAX_IMAGE_BYTES", str(10 * 1024 * 1024)))
+
+if MAX_IMAGE_BYTES <= 0:
+    raise ValueError("MAX_IMAGE_BYTES must be a positive number of bytes.")
+
 
 def _is_timezone(name: str) -> bool:
     try:

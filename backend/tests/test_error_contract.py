@@ -9,6 +9,7 @@ must fail here first.
 
 import pytest
 
+import config
 import services.meals
 from services.nutrition_ai import (
     EstimatorFailed,
@@ -51,6 +52,18 @@ def test_unsupported_image_type_is_a_string_detail(client):
     )
 
     assert_string_detail(response, 400)
+
+
+def test_image_too_large_is_a_string_detail(client, monkeypatch):
+    monkeypatch.setattr(config, "MAX_IMAGE_BYTES", 8)
+
+    response = client.post(
+        "/meals/estimate",
+        data={"message": "lunch"},
+        files={"image": ("meal.jpg", b"\xff\xd8\xff" + b"\x00" * 6, "image/jpeg")},
+    )
+
+    assert_string_detail(response, 413)
 
 
 @pytest.mark.parametrize(
