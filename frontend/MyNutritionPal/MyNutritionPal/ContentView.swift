@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 import UIKit
 
@@ -23,6 +24,9 @@ struct DashboardView: View {
     /// Bumped on every pick, so only the newest pick's result is kept.
     @State private var photoGeneration = 0
     @State private var showingCamera = false
+    @State private var libraryItem: PhotosPickerItem?
+    // Without a camera (e.g. the simulator), the camera picker would crash.
+    private let hasCamera = UIImagePickerController.isSourceTypeAvailable(.camera)
     @FocusState private var isMealFieldFocused: Bool
 
     var body: some View {
@@ -95,23 +99,21 @@ struct DashboardView: View {
                             RoundedRectangle(cornerRadius: 16)
                         )
                         
-                        Button {
-                            showingCamera = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "camera.fill")
-                                Text("Take Photo")
-                                    .fontWeight(.semibold)
+                        HStack(spacing: 12) {
+                            if hasCamera {
+                                Button {
+                                    showingCamera = true
+                                } label: {
+                                    photoSourceLabel("Take Photo", systemImage: "camera.fill")
+                                }
                             }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
+
+                            PhotosPicker(selection: $libraryItem, matching: .images) {
+                                photoSourceLabel("Choose Photo", systemImage: "photo.on.rectangle")
+                            }
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(.white)
-                        .background(Color.white.opacity(0.10))
-                        .clipShape(
-                            RoundedRectangle(cornerRadius: 16)
-                        )
                         if isPreparingPhoto {
                             HStack {
                                 ProgressView()
@@ -194,6 +196,17 @@ struct DashboardView: View {
                             guard let image else { return }
                             cameraImage = nil
                             preparePhoto { image }
+                        }
+                        .onChange(of: libraryItem) { _, item in
+                            guard let item else { return }
+                            // Cleared so picking the same photo again still triggers.
+                            libraryItem = nil
+                            preparePhoto {
+                                guard let data = try? await item.loadTransferable(type: Data.self) else {
+                                    return nil
+                                }
+                                return UIImage(data: data)
+                            }
                         }
                     }
 
@@ -286,6 +299,20 @@ struct DashboardView: View {
 
             isLoading = false
         }
+    }
+
+    private func photoSourceLabel(_ title: String, systemImage: String) -> some View {
+        HStack {
+            Image(systemName: systemImage)
+            Text(title)
+                .fontWeight(.semibold)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(Color.white.opacity(0.10))
+        .clipShape(
+            RoundedRectangle(cornerRadius: 16)
+        )
     }
 
     /// Turns a picked image into the upload JPEG off the main thread. The
