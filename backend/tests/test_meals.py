@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, time, timedelta, timezone
 
 import pytest
+from starlette.datastructures import UploadFile
 
 import config
 import services.meals
@@ -145,6 +146,25 @@ def test_image_that_is_not_its_declared_type_is_rejected_and_nothing_saved(
     }
     assert fake_estimator == []
     assert client.get("/meals/today").json() == []
+
+
+def test_oversized_image_is_never_read_whole(client, monkeypatch, fake_estimator):
+    monkeypatch.setattr(config, "MAX_IMAGE_BYTES", 64)
+    read_sizes = []
+    original_read = UploadFile.read
+
+    async def read(self, size=-1):
+        read_sizes.append(size)
+        return await original_read(self, size)
+
+    monkeypatch.setattr(UploadFile, "read", read)
+
+    response = log_meal(
+        client, files={"image": ("meal.jpg", jpeg_of_size(10_000), "image/jpeg")}
+    )
+
+    assert response.status_code == 413
+    assert read_sizes == [65]
 
 
 def test_default_size_limit_rejects_an_image_just_over_10_mib(client, fake_estimator):

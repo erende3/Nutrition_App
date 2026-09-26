@@ -25,7 +25,7 @@ struct DashboardView: View {
     @State private var photoGeneration = 0
     @State private var showingCamera = false
     @State private var libraryItem: PhotosPickerItem?
-    // Without a camera (e.g. the simulator), the camera picker would crash.
+    // Presenting the camera picker without an available camera raises an exception.
     private let hasCamera = UIImagePickerController.isSourceTypeAvailable(.camera)
     @FocusState private var isMealFieldFocused: Bool
 
@@ -271,6 +271,7 @@ struct DashboardView: View {
         let submittedMeal = mealText.trimmingCharacters(in: .whitespacesAndNewlines)
 
         let imageData = photo?.jpeg
+        let submittedPhotoGeneration = photoGeneration
 
         isLoading = true
         errorMessage = nil
@@ -287,7 +288,7 @@ struct DashboardView: View {
 
                 mealText = ""
                 // Keep a photo picked while this estimate was running.
-                if photo?.jpeg == imageData {
+                if photoGeneration == submittedPhotoGeneration {
                     photo = nil
                 }
 
