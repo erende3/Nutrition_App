@@ -113,6 +113,7 @@ struct MealHistoryView: View {
                             go(to: nil)
                         }
                         .accessibilityLabel("Go to Today")
+                        .accessibilityInputLabels(["Today", "Go to Today"])
                     }
                 }
             }
@@ -199,6 +200,9 @@ struct MealHistoryView: View {
         .accessibilityValue(Self.spokenDate(for: shownDate, today: todayDate))
         .accessibilityHint("Opens a calendar. Swipe up or down to change the day.")
         .accessibilityAddTraits(.isButton)
+        .accessibilityAction {
+            showingDatePicker = true
+        }
         // VoiceOver reads the new value itself after an adjustment, so
         // these don't announce it again.
         .accessibilityAdjustableAction { direction in
@@ -225,6 +229,9 @@ struct MealHistoryView: View {
                 .frame(minWidth: side, minHeight: side)
                 .contentShape(Rectangle())
         }
+        // Borderless: in a List row, buttons with the default style all
+        // fire on a tap anywhere in the row.
+        .buttonStyle(.borderless)
         .disabled(days > 0 && isToday)
         .accessibilityLabel(days < 0 ? "Previous day" : "Next day")
     }
@@ -239,7 +246,8 @@ struct MealHistoryView: View {
                         get: { Self.date(shownDate) ?? .now },
                         set: { picked in
                             showingDatePicker = false
-                            go(to: APIClient.dayString(picked, in: .autoupdatingCurrent))
+                            // VoiceOver focus returns to the date, which reads it.
+                            go(to: APIClient.dayString(picked, in: .autoupdatingCurrent), announce: false)
                         }
                     ),
                     in: ...Date.now,
@@ -365,9 +373,11 @@ struct MealHistoryView: View {
         Task { await store.refreshPastDay() }
 
         if announce {
-            AccessibilityNotification.Announcement(
-                Self.spokenDate(for: shownDate, today: todayDate)
-            ).post()
+            // High priority, so it isn't cut off when the Today button
+            // disappears and VoiceOver focus moves.
+            var text = AttributedString(Self.spokenDate(for: shownDate, today: todayDate))
+            text.accessibilitySpeechAnnouncementPriority = .high
+            AccessibilityNotification.Announcement(text).post()
         }
     }
 
@@ -398,19 +408,27 @@ struct MealHistoryView: View {
             + "fat \(grams(meal.fat_g)) grams"
     }
 
-    /// The start of a YYYY-MM-DD day in `calendar`'s timezone.
+    /// The start of a YYYY-MM-DD day in `calendar`'s timezone. The date is
+    /// ISO (Gregorian) whatever calendar the device uses.
     static func date(_ day: String, calendar: Calendar = .autoupdatingCurrent) -> Date? {
         let parts = day.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 3 else { return nil }
-        return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+        return gregorian(in: calendar.timeZone)
+            .date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
     }
 
     /// The calendar day `days` after `day` (before, if negative).
     static func shifted(_ day: String, by days: Int, calendar: Calendar = .autoupdatingCurrent) -> String {
         guard let start = date(day, calendar: calendar),
-              let shifted = calendar.date(byAdding: .day, value: days, to: start)
+              let shifted = gregorian(in: calendar.timeZone).date(byAdding: .day, value: days, to: start)
         else { return day }
         return APIClient.dayString(shifted, in: calendar.timeZone)
+    }
+
+    private static func gregorian(in timeZone: TimeZone) -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        return calendar
     }
 
     /// "Friday, Sep 25", with the year when it isn't today's year.

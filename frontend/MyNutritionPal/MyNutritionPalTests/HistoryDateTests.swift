@@ -32,6 +32,17 @@ struct HistoryDateTests {
         #expect(MealHistoryView.shifted(day, by: days, calendar: Self.newYork) == expected)
     }
 
+    /// Dates are ISO whatever the device's calendar (here Buddhist, where
+    /// 2026 would otherwise be read as the year 2026 BE).
+    @Test func movesOneDayOnANonGregorianDevice() throws {
+        var buddhist = Calendar(identifier: .buddhist)
+        buddhist.timeZone = TimeZone(identifier: "Asia/Bangkok")!
+
+        #expect(MealHistoryView.shifted("2026-09-27", by: -1, calendar: buddhist) == "2026-09-26")
+        let date = try #require(MealHistoryView.date("2026-09-27", calendar: buddhist))
+        #expect(APIClient.dayString(date, in: buddhist.timeZone) == "2026-09-27")
+    }
+
     @Test func titleNamesTheDay() {
         #expect(MealHistoryView.title(for: "2026-09-25", today: "2026-09-27", locale: Self.english, calendar: Self.newYork)
                 == "Friday, Sep 25")
