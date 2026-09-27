@@ -1,6 +1,17 @@
 from datetime import date, datetime, timezone
 
-from sqlalchemy import JSON, CheckConstraint, Date, DateTime, Float, ForeignKey, Index, Integer, String
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -127,4 +138,42 @@ class Meal(Base):
 
     user: Mapped["User"] = relationship(
         back_populates="meals",
+    )
+
+class DailyGoal(Base):
+    """A user's calorie goal from effective_date until their next goal."""
+
+    __tablename__ = "daily_goals"
+    __table_args__ = (
+        CheckConstraint(
+            "calories > 0",
+            name="ck_daily_goals_calories_positive",
+        ),
+        UniqueConstraint(
+            "user_id",
+            "effective_date",
+            name="uq_daily_goals_user_effective_date",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+    )
+
+    effective_date: Mapped[date] = mapped_column(Date)
+
+    calories: Mapped[int] = mapped_column(Integer)
+
+    # A GoalSource value (schemas.py). A plain string, so new sources need
+    # no migration.
+    source: Mapped[str] = mapped_column(String)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
     )

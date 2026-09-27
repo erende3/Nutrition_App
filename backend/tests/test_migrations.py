@@ -5,7 +5,9 @@ Every test uses its own temporary SQLite file, never the app's database.
 """
 
 import shutil
+from datetime import datetime
 from functools import partial
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 import pytest
@@ -340,13 +342,13 @@ PROVENANCE_COLUMNS = [
 ]
 
 
-def insert_dated_meal(db_url, meal_name="Eggs", local_date="2026-09-25"):
+def insert_dated_meal(db_url, meal_name="Eggs", local_date="2026-09-25", user_id=1):
     run_sql(
         db_url,
         [
             "INSERT INTO meals (user_id, meal_name, calories, protein_g, carbohydrates_g, "
             "fat_g, confidence, calorie_low, calorie_high, created_at, local_date) "
-            f"VALUES (1, '{meal_name}', 400, 20, 35, 20, 0.85, 350, 450, "
+            f"VALUES ({user_id}, '{meal_name}', 400, 20, 35, 20, 0.85, 350, 450, "
             f"'{local_date} 12:00:00', '{local_date}')"
         ],
     )
@@ -392,3 +394,76 @@ def test_provenance_migration_downgrades_and_upgrades_again(db_url):
     command.upgrade(alembic_cfg, "0004_meal_provenance")
 
     assert rows(db_url, "SELECT source, ai_model FROM meals") == [(None, None)]
+
+
+GOAL_ROWS = "SELECT user_id, effective_date, calories, source FROM daily_goals ORDER BY user_id"
+
+
+def test_goal_history_migration_copies_each_goal_from_the_earliest_meal_date(
+    db_url, monkeypatch
+):
+    monkeypatch.setattr(config, "DEFAULT_TIMEZONE", "Pacific/Auckland")
+    alembic_cfg = db_migrations.alembic_config(db_url)
+    command.upgrade(alembic_cfg, "0004_meal_provenance")
+    insert_users_with_goals(db_url, [2633, 1800, 2200])
+    insert_dated_meal(db_url, local_date="2026-09-03")
+    insert_dated_meal(db_url, local_date="2026-09-01")
+    insert_dated_meal(db_url, local_date="2026-09-10", user_id=2)
+
+    before = datetime.now(ZoneInfo("Pacific/Auckland")).date().isoformat()
+    command.upgrade(alembic_cfg, "0005_daily_goals")
+    after = datetime.now(ZoneInfo("Pacific/Auckland")).date().isoformat()
+
+    goals = rows(db_url, GOAL_ROWS)
+    assert goals[:2] == [
+        (1, "2026-09-01", 2633, "migrated"),
+        (2, "2026-09-10", 1800, "migrated"),
+    ]
+    # No meals: the migration date in DEFAULT_TIMEZONE.
+    assert goals[2][0] == 3 and goals[2][2:] == (2200, "migrated")
+    assert goals[2][1] in {before, after}
+    assert rows(db_url, "SELECT id, daily_calorie_goal FROM users ORDER BY id") == [
+        (1, 2633),
+        (2, 1800),
+        (3, 2200),
+    ]
+    assert rows(db_url, "SELECT count(*) FROM daily_goals WHERE created_at IS NULL") == [(0,)]
+
+
+def test_goal_history_rejects_non_positive_goals_and_two_goals_on_one_day(db_url):
+    command.upgrade(db_migrations.alembic_config(db_url), "0005_daily_goals")
+    insert_users_with_goals(db_url, [2633])
+
+    def insert_goal(calories, effective_date="2026-09-01"):
+        run_sql(
+            db_url,
+            [
+                "INSERT INTO daily_goals (user_id, effective_date, calories, source, "
+                f"created_at) VALUES (1, '{effective_date}', {calories}, 'calculated', "
+                "'2026-09-01 12:00:00')"
+            ],
+        )
+
+    for calories in (0, -1):
+        with pytest.raises(IntegrityError):
+            insert_goal(calories)
+    insert_goal(2633)
+    with pytest.raises(IntegrityError):
+        insert_goal(1800)
+    assert rows(db_url, GOAL_ROWS) == [(1, "2026-09-01", 2633, "calculated")]
+
+
+def test_goal_history_migration_downgrades_and_upgrades_again(db_url):
+    alembic_cfg = db_migrations.alembic_config(db_url)
+    command.upgrade(alembic_cfg, "0005_daily_goals")
+    insert_users_with_goals(db_url, [2633])
+
+    command.downgrade(alembic_cfg, "0004_meal_provenance")
+
+    assert "daily_goals" not in inspect(create_engine(db_url)).get_table_names()
+    assert rows(db_url, "SELECT daily_calorie_goal FROM users") == [(2633,)]
+
+    insert_dated_meal(db_url, local_date="2026-09-05")
+    command.upgrade(alembic_cfg, "0005_daily_goals")
+
+    assert rows(db_url, GOAL_ROWS) == [(1, "2026-09-05", 2633, "migrated")]
