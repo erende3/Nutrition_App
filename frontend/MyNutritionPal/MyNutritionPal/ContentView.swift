@@ -516,6 +516,7 @@ struct LoadErrorBanner: View {
 
 struct ContentView: View {
     @Environment(NutritionStore.self) private var store
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         TabView {
@@ -531,6 +532,14 @@ struct ContentView: View {
         }
         .task {
             await store.refresh()
+        }
+        // Coming back to the app (from Settings, Control Center, another app
+        // or a new day) is when data goes stale or the network has changed.
+        // Refreshes are shared, so this can't double up with the one above.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { await store.refresh() }
+            }
         }
     }
 }
