@@ -47,12 +47,12 @@ final class NutritionStore {
         await refreshTask?.value
     }
 
-    /// Estimates and saves a meal, then refetches today's data. A failed
-    /// refresh after the save shows as `loadError`; the meal was still saved,
-    /// so the estimate is returned.
+    /// Estimates and saves a meal, and returns as soon as it's saved.
+    /// Today's data is refetched in the background; if that fails, it shows
+    /// as `loadError`, but the meal was still saved.
     func logMeal(message: String, imageData: Data?) async throws -> NutritionEstimate {
         let estimate = try await api.estimateMeal(message: message, imageData: imageData)
-        await refreshAfterChange()
+        refreshAfterChange()
         return estimate
     }
 
@@ -61,15 +61,20 @@ final class NutritionStore {
     func deleteMeal(_ meal: Meal) async throws {
         try await api.deleteMeal(id: meal.id)
         meals?.removeAll { $0.id == meal.id }
-        await refreshAfterChange()
+        await refreshAfterChange().value
     }
 
-    private func refreshAfterChange() async {
+    /// Marks today's data as changed and fetches it again. A refresh already
+    /// running may predate the change: it finishes (its result is dropped),
+    /// then a new one starts.
+    @discardableResult
+    private func refreshAfterChange() -> Task<Void, Never> {
         changes += 1
-        // A refresh already running may predate the change: let it finish
-        // (its result is dropped), then fetch again.
-        await refreshTask?.value
-        await refresh()
+        let olderRefresh = refreshTask
+        return Task {
+            await olderRefresh?.value
+            await refresh()
+        }
     }
 
     private func load() async {

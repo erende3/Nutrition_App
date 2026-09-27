@@ -235,8 +235,35 @@ extension StubbedNetwork {
 
             #expect(estimate.meal_name == "Apple")
             #expect(StubURLProtocol.requests.first?.url?.path == "/meals/estimate")
+            await waitUntil { store.summary?.calories_consumed == 95 }
             #expect(store.summary?.calories_consumed == 95)
             #expect(store.meals?.map(\.id) == [1])
+        }
+
+        /// The meal is saved once the estimate returns, so the Dashboard shows
+        /// it without waiting for the refresh (which could take 20 s or more
+        /// on a bad network).
+        @Test func logMealReturnsBeforeTheRefreshFinishes() async throws {
+            let store = store()
+            let gate = Gate()
+            StubURLProtocol.handler = { request in
+                if request.url?.path == "/meals/estimate" {
+                    return (200, Data(estimateJSON.utf8))
+                }
+                gate.wait()
+                return request.url?.path == "/summary/daily"
+                    ? (200, Data(summaryJSON(consumed: 95).utf8))
+                    : (200, Data(mealsJSON([1]).utf8))
+            }
+
+            let estimate = try await store.logMeal(message: "apple", imageData: nil)
+
+            #expect(estimate.calories == 95)
+            #expect(store.summary == nil)
+            gate.open()
+            gate.open()
+            await waitUntil { store.summary != nil }
+            #expect(store.summary?.calories_consumed == 95)
         }
 
         @Test func logMealFailureThrowsAndLeavesLoadErrorAlone() async {
@@ -263,6 +290,7 @@ extension StubbedNetwork {
             let estimate = try await store.logMeal(message: "apple", imageData: nil)
 
             #expect(estimate.calories == 95)
+            await waitUntil { store.loadError != nil }
             #expect(store.loadError != nil)
         }
 
