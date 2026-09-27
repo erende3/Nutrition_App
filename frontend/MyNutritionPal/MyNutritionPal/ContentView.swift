@@ -6,7 +6,7 @@ struct DashboardView: View {
     @Environment(NutritionStore.self) private var store
 
     @State private var mealText = ""
-    @State private var lastResult: NutritionEstimate?
+    @State private var lastResult: Meal?
 
     @State private var isLoading = false
     @State private var estimateError: String?
@@ -34,7 +34,7 @@ struct DashboardView: View {
                                 .foregroundStyle(.gray)
 
                             // Only before the first load; later refreshes keep the numbers.
-                            if store.summary == nil && store.isRefreshing {
+                            if store.day == nil && store.isRefreshing {
                                 ProgressView()
                                     .controlSize(.mini)
                             }
@@ -65,24 +65,24 @@ struct DashboardView: View {
                     }
 
                     CalorieRing(
-                        consumed: store.summary?.calories_consumed,
-                        goal: store.summary?.daily_goal
+                        consumed: store.day?.totals.calories,
+                        goal: store.day?.goal.calories
                     )
 
                     HStack(spacing: 12) {
                         StatCard(
                             title: "Consumed",
-                            value: Self.number(store.summary?.calories_consumed)
+                            value: Self.number(store.day?.totals.calories)
                         )
 
                         StatCard(
                             title: "Remaining",
-                            value: Self.number(store.summary?.calories_remaining)
+                            value: Self.number(store.day?.calories_remaining)
                         )
 
                         StatCard(
                             title: "Goal",
-                            value: Self.number(store.summary?.daily_goal)
+                            value: Self.number(store.day?.goal.calories)
                         )
                     }
 
@@ -306,9 +306,9 @@ struct DashboardView: View {
         Task {
             do {
                 let result = try await store.logMeal(
-                    message: submittedMeal.isEmpty
-                        ? "Estimate this meal from the image."
-                        : submittedMeal,
+                    // No text for a photo-only meal: the server saves it
+                    // without a description.
+                    message: submittedMeal.isEmpty ? nil : submittedMeal,
                     imageData: imageData
                 )
                 lastResult = result

@@ -12,26 +12,33 @@ enum APIError: Error, Equatable, LocalizedError {
     case notConfigured
     /// The request didn't get a response, e.g. the server is down or unreachable.
     case transport(URLError, server: String)
-    /// The server answered with a non-2xx status. `message` is its `detail`.
-    case server(status: Int, message: String?)
+    /// The server answered with a non-2xx status. `code` and `message` come
+    /// from its error body; `code` is stable, `message` is for the user.
+    case server(status: Int, code: String?, message: String?)
     /// A 2xx response the app couldn't decode.
     case decoding
 
-    /// The error for a non-2xx response. The backend sends
-    /// {"detail": "<message>"}, or a list of problems for 422 validation errors.
+    /// The error for a non-2xx response. The backend (API v1) sends
+    /// {"error": {"code": "...", "message": "..."}}.
     static func from(status: Int, data: Data) -> APIError {
         struct Body: Decodable {
-            let detail: String
+            struct Problem: Decodable {
+                let code: String
+                let message: String
+            }
+
+            let error: Problem
         }
+
+        let problem = (try? JSONDecoder().decode(Body.self, from: data))?.error
 
         if status == 422 {
-            return .server(status: status, message: "Some of the information sent wasn't valid.")
+            return .server(status: status, code: problem?.code, message: "Some of the information sent wasn't valid.")
         }
 
-        let detail = (try? JSONDecoder().decode(Body.self, from: data))?.detail
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let message = problem?.message.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        return .server(status: status, message: detail?.isEmpty == false ? detail : nil)
+        return .server(status: status, code: problem?.code, message: message?.isEmpty == false ? message : nil)
     }
 
     /// True when a request was cancelled (e.g. its task ended). Cancellation
@@ -56,7 +63,7 @@ enum APIError: Error, Equatable, LocalizedError {
             "The request was cancelled. Please try again."
         case .transport(_, let server):
             "Can't reach the server at \(server). Check that it's running, that your iPhone and Mac are on the same network, and that Local Network access is allowed in Settings."
-        case .server(let status, let message):
+        case .server(let status, _, let message):
             message ?? "The server returned an error (\(status))."
         case .decoding:
             "The server sent a response the app couldn't read."

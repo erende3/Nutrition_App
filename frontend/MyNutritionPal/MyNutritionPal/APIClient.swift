@@ -33,35 +33,35 @@ final class APIClient {
 
     // MARK: - Endpoints
 
+    /// Estimates and saves a meal; returns the saved meal. `message` may be
+    /// nil for a photo meal.
     func estimateMeal(
-        message: String,
+        message: String?,
         imageData: Data? = nil
-    ) async throws -> NutritionEstimate {
+    ) async throws -> Meal {
         let boundary = UUID().uuidString
 
         return try await send(
             "POST",
-            "/meals/estimate",
+            "/v1/meals/estimate",
             body: Self.multipartBody(message: message, imageData: imageData, boundary: boundary),
             contentType: "multipart/form-data; boundary=\(boundary)",
             timeout: Self.estimateTimeout
         )
     }
 
-    func getDailySummary() async throws -> DailySummary {
-        try await send("GET", "/summary/daily")
-    }
-
-    func getTodaysMeals() async throws -> [Meal] {
-        try await send("GET", "/meals/today")
+    /// The day containing `date` in the device's timezone: its meals, totals
+    /// and goal.
+    func getDay(_ date: Date) async throws -> Day {
+        try await send("GET", "/v1/days/\(Self.dayString(date, in: timeZone()))")
     }
 
     func deleteMeal(id: Int) async throws {
-        _ = try await data("DELETE", "/meals/\(id)")
+        _ = try await data("DELETE", "/v1/meals/\(id)")
     }
 
     func getUserProfile() async throws -> UserProfile {
-        try await send("GET", "/users/profile")
+        try await send("GET", "/v1/users/profile")
     }
 
     func submitOnboarding(
@@ -83,7 +83,7 @@ final class APIClient {
 
         return try await send(
             "POST",
-            "/users/onboarding",
+            "/v1/users/onboarding",
             body: try JSONSerialization.data(withJSONObject: body),
             contentType: "application/json"
         )
@@ -91,11 +91,19 @@ final class APIClient {
 
     // MARK: - Requests
 
-    static func multipartBody(message: String, imageData: Data?, boundary: String) -> Data {
+    /// The calendar date of `date` in `timeZone`, as YYYY-MM-DD.
+    static func dayString(_ date: Date, in timeZone: TimeZone) -> String {
+        date.formatted(Date.ISO8601FormatStyle(timeZone: timeZone).year().month().day())
+    }
+
+    static func multipartBody(message: String?, imageData: Data?, boundary: String) -> Data {
         var body = Data()
-        body.append(Data("--\(boundary)\r\n".utf8))
-        body.append(Data("Content-Disposition: form-data; name=\"message\"\r\n\r\n".utf8))
-        body.append(Data("\(message)\r\n".utf8))
+
+        if let message {
+            body.append(Data("--\(boundary)\r\n".utf8))
+            body.append(Data("Content-Disposition: form-data; name=\"message\"\r\n\r\n".utf8))
+            body.append(Data("\(message)\r\n".utf8))
+        }
 
         if let imageData {
             body.append(Data("--\(boundary)\r\n".utf8))

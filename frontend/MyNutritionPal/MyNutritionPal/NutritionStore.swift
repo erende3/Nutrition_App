@@ -6,19 +6,19 @@
 import Foundation
 import Observation
 
-/// Today's summary and meals, shared by the Dashboard and History, so both
-/// always show the same day. Only that shared server data lives here; form
+/// Today (its totals, goal and meals), shared by the Dashboard and History,
+/// so both always show the same day. Only that shared server data lives here; form
 /// text, photos and each action's own errors stay in their views.
 ///
 /// The server is the source of truth: logging or deleting a meal refetches
-/// both, and nothing is retried automatically (an estimate saves a meal).
+/// the day, and nothing is retried automatically (an estimate saves a meal).
 @MainActor
 @Observable
 final class NutritionStore {
     /// nil until the first successful refresh.
-    private(set) var summary: DailySummary?
+    private(set) var day: Day?
     /// nil until the first successful refresh; empty on a day with no meals.
-    private(set) var meals: [Meal]?
+    var meals: [Meal]? { day?.meals }
     private(set) var isRefreshing = false
     /// Why the last refresh failed; cleared by the next successful one.
     private(set) var loadError: String?
@@ -35,8 +35,10 @@ final class NutritionStore {
         self.api = api
     }
 
-    /// Loads today's summary and meals together. While a refresh is running,
-    /// callers share it instead of starting another.
+    /// Loads today, in one request. "Today" is worked out on each refresh,
+    /// so a refresh after midnight (or a timezone change) shows the new day.
+    /// While a refresh is running, callers share it instead of starting
+    /// another.
     func refresh() async {
         if refreshTask == nil {
             refreshTask = Task {
@@ -50,17 +52,18 @@ final class NutritionStore {
     /// Estimates and saves a meal, and returns as soon as it's saved.
     /// Today's data is refetched in the background; if that fails, it shows
     /// as `loadError`, but the meal was still saved.
-    func logMeal(message: String, imageData: Data?) async throws -> NutritionEstimate {
-        let estimate = try await api.estimateMeal(message: message, imageData: imageData)
+    /// `message` may be nil for a photo meal. Returns the saved meal.
+    func logMeal(message: String?, imageData: Data?) async throws -> Meal {
+        let meal = try await api.estimateMeal(message: message, imageData: imageData)
         refreshAfterChange()
-        return estimate
+        return meal
     }
 
     /// Deletes a meal on the server, removes its row at once, then refetches
     /// today's data. If the delete fails, nothing changes and it throws.
     func deleteMeal(_ meal: Meal) async throws {
         try await api.deleteMeal(id: meal.id)
-        meals?.removeAll { $0.id == meal.id }
+        day?.meals.removeAll { $0.id == meal.id }
         await refreshAfterChange().value
     }
 
@@ -83,13 +86,10 @@ final class NutritionStore {
         let startedAt = changes
 
         do {
-            async let summary = api.getDailySummary()
-            async let meals = api.getTodaysMeals()
-            let (newSummary, newMeals) = try await (summary, meals)
+            let newDay = try await api.getDay(.now)
 
             guard startedAt == changes else { return }
-            self.summary = newSummary
-            self.meals = newMeals
+            day = newDay
             loadError = nil
         } catch {
             guard startedAt == changes, !APIError.isCancellation(error) else { return }

@@ -149,11 +149,11 @@ API_BASE_URL = http:/$()/Erics-MacBook-Pro.local:8000
 
 ### How the app calls the backend
 
-All requests go through `APIClient.swift`. It sends the phone's timezone in `X-Timezone`, waits up to 300 s for a meal estimate and 20 s for anything else, and never retries on its own (an estimate saves the meal, so a retry could log it twice). Failures show the backend's `detail` message, or say which server couldn't be reached. A cancelled request (for example, when you leave a screen mid-load) isn't shown as an error.
+All requests go through `APIClient.swift`, to API v1. It sends the phone's timezone in `X-Timezone`, waits up to 300 s for a meal estimate and 20 s for anything else, and never retries on its own (an estimate saves the meal, so a retry could log it twice). Failures show the error envelope's `message` (the `code` is kept on `APIError`), or say which server couldn't be reached. A cancelled request (for example, when you leave a screen mid-load) isn't shown as an error.
 
 ### Today's data and refreshing
 
-The Dashboard and History read the same shared state, `NutritionStore.swift`: today's summary and meals, loaded together. Each screen keeps its own form, photo and error state. The store refreshes:
+The Dashboard and History read the same shared state, `NutritionStore.swift`: today, loaded in one request (`GET /v1/days/{date}`, with the date worked out on the phone, in its timezone, at each refresh). Each screen keeps its own form, photo and error state. The store refreshes:
 
 - when the tabs first appear, and whenever the app becomes active again (for example, back from Settings after switching Wi-Fi, from Control Center, or on a new day);
 - when you pull to refresh on either screen, or tap Retry;

@@ -132,7 +132,7 @@ extension StubbedNetwork {
             #expect(model.dailyCalorieGoal == 2200)
             #expect(model.goalAdjustedNotice != nil)
             #expect(!model.showsEnergyBreakdown)
-            #expect(StubURLProtocol.requests.first?.url?.path == "/users/onboarding")
+            #expect(StubURLProtocol.requests.first?.url?.path == "/v1/users/onboarding")
         }
 
         /// The typed value is left as it is (not clamped) and nothing is sent.
@@ -170,7 +170,7 @@ extension StubbedNetwork {
 
         @Test func serverErrorIsShown() async {
             let model = model()
-            StubURLProtocol.handler = { _ in (503, Data(#"{"detail": "Try again later."}"#.utf8)) }
+            StubURLProtocol.handler = { _ in (503, Data(#"{"error": {"code": "estimation_unavailable", "message": "Try again later."}}"#.utf8)) }
 
             await model.submitOnboarding()
 

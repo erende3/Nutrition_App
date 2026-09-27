@@ -10,19 +10,20 @@ import Testing
 private let base = URL(string: "http://Erics-Mac.local:8000")!
 private let tokyo = TimeZone(identifier: "Asia/Tokyo")!
 
-private let estimateJSON = """
-{"meal_name": "Chicken and rice", "calories": 650, "protein_g": 45.0,
- "carbohydrates_g": 70.0, "fat_g": 15.0, "confidence": 0.8,
- "calorie_low": 550, "calorie_high": 750, "assumptions": ["1 cup rice"]}
+/// 2026-09-26 20:00 UTC: already 2026-09-27 in Tokyo.
+private let lateEveningUTC = Date(timeIntervalSince1970: 1_790_452_800)
+
+private let mealJSON = """
+{"id": 7, "meal_name": "Chicken and rice", "calories": 650, "protein_g": 45.0,
+ "carbohydrates_g": 70.0, "fat_g": 15.0, "confidence": 0.8, "calorie_low": 550,
+ "calorie_high": 750, "assumptions": ["1 cup rice"], "source": "text",
+ "description": "chicken and rice", "local_date": "2026-09-27",
+ "created_at": "2026-09-27T16:04:05Z"}
 """
-private let summaryJSON = """
-{"date": "2026-09-25", "daily_goal": 2633, "calories_consumed": 650,
- "calories_remaining": 1983, "percentage": 24.7}
-"""
-private let mealsJSON = """
-[{"id": 7, "meal_name": "Chicken and rice", "calories": 650, "protein_g": 45.0,
-  "carbohydrates_g": 70.0, "fat_g": 15.0, "confidence": 0.8, "calorie_low": 550,
-  "calorie_high": 750, "created_at": "2026-09-25T16:04:05.123456"}]
+private let dayJSON = """
+{"date": "2026-09-27", "goal": {"calories": 2633},
+ "totals": {"calories": 650, "protein_g": 45.0, "carbohydrates_g": 70.0, "fat_g": 15.0},
+ "calories_remaining": 1983, "percentage": 24.7, "meals": [\(mealJSON)]}
 """
 private let profileJSON = """
 {"id": 1, "age": null, "sex": null, "height_cm": null, "weight_kg": null,
@@ -55,26 +56,28 @@ extension StubbedNetwork {
 
         // MARK: - Endpoints
 
-        @Test func dailySummary() async throws {
+        @Test func day() async throws {
             let api = client()
-            respond(summaryJSON)
+            respond(dayJSON)
 
-            let summary = try await api.getDailySummary()
+            let day = try await api.getDay(lateEveningUTC)
 
-            #expect(summary.calories_consumed == 650)
+            #expect(day.totals.calories == 650)
+            #expect(day.goal.calories == 2633)
+            #expect(day.meals.map(\.id) == [7])
             #expect(try onlyRequest.httpMethod == "GET")
-            #expect(try onlyRequest.url?.absoluteString == "http://Erics-Mac.local:8000/summary/daily")
+            #expect(try onlyRequest.url?.absoluteString == "http://Erics-Mac.local:8000/v1/days/2026-09-27")
         }
 
-        @Test func todaysMeals() async throws {
-            let api = client()
-            respond(mealsJSON)
-
-            let meals = try await api.getTodaysMeals()
-
-            #expect(meals.map(\.id) == [7])
-            #expect(try onlyRequest.httpMethod == "GET")
-            #expect(try onlyRequest.url?.absoluteString == "http://Erics-Mac.local:8000/meals/today")
+        /// The date asked for is the device's calendar date, not UTC's.
+        @Test(arguments: [
+            ("Asia/Tokyo", "2026-09-27"),
+            ("UTC", "2026-09-26"),
+            ("America/Los_Angeles", "2026-09-26"),
+            ("Pacific/Kiritimati", "2026-09-27"),
+        ])
+        func dayIsTheDateInTheDeviceTimezone(_ zone: String, _ expected: String) {
+            #expect(APIClient.dayString(lateEveningUTC, in: TimeZone(identifier: zone)!) == expected)
         }
 
         @Test func userProfile() async throws {
@@ -85,17 +88,17 @@ extension StubbedNetwork {
 
             #expect(!profile.onboardingComplete)
             #expect(try onlyRequest.httpMethod == "GET")
-            #expect(try onlyRequest.url?.absoluteString == "http://Erics-Mac.local:8000/users/profile")
+            #expect(try onlyRequest.url?.absoluteString == "http://Erics-Mac.local:8000/v1/users/profile")
         }
 
-        @Test func deleteMeal() async throws {
+        @Test func deleteMealAcceptsNoContent() async throws {
             let api = client()
-            respond(#"{"message": "Meal deleted.", "meal_id": 7}"#)
+            respond("", status: 204)
 
             try await api.deleteMeal(id: 7)
 
             #expect(try onlyRequest.httpMethod == "DELETE")
-            #expect(try onlyRequest.url?.absoluteString == "http://Erics-Mac.local:8000/meals/7")
+            #expect(try onlyRequest.url?.absoluteString == "http://Erics-Mac.local:8000/v1/meals/7")
         }
 
         @Test func submitOnboardingSendsTheSameJSON() async throws {
@@ -110,7 +113,7 @@ extension StubbedNetwork {
             #expect(result.dailyCalorieGoal == 2556)
             let request = try onlyRequest
             #expect(request.httpMethod == "POST")
-            #expect(request.url?.absoluteString == "http://Erics-Mac.local:8000/users/onboarding")
+            #expect(request.url?.absoluteString == "http://Erics-Mac.local:8000/v1/users/onboarding")
             #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
 
             let body = try #require(StubURLProtocol.bodyData(of: request))
@@ -121,16 +124,17 @@ extension StubbedNetwork {
             #expect(json["activity_level"] as? String == "moderately_active")
         }
 
-        @Test func estimateMealSendsMultipart() async throws {
+        @Test func estimateMealSendsMultipartAndReturnsTheSavedMeal() async throws {
             let api = client()
-            respond(estimateJSON)
+            respond(mealJSON, status: 201)
 
-            let estimate = try await api.estimateMeal(message: "2 eggs", imageData: Data([0xFF, 0xD8]))
+            let meal = try await api.estimateMeal(message: "2 eggs", imageData: Data([0xFF, 0xD8]))
 
-            #expect(estimate.calories == 650)
+            #expect(meal.id == 7)
+            #expect(meal.calories == 650)
             let request = try onlyRequest
             #expect(request.httpMethod == "POST")
-            #expect(request.url?.absoluteString == "http://Erics-Mac.local:8000/meals/estimate")
+            #expect(request.url?.absoluteString == "http://Erics-Mac.local:8000/v1/meals/estimate")
 
             let contentType = try #require(request.value(forHTTPHeaderField: "Content-Type"))
             #expect(contentType.hasPrefix("multipart/form-data; boundary="))
@@ -145,17 +149,15 @@ extension StubbedNetwork {
             let api = client()
             StubURLProtocol.handler = { request in
                 switch request.url?.path {
-                case "/summary/daily": (200, Data(summaryJSON.utf8))
-                case "/meals/today": (200, Data(mealsJSON.utf8))
-                case "/users/profile": (200, Data(profileJSON.utf8))
-                case "/users/onboarding": (200, Data(onboardingJSON.utf8))
-                case "/meals/estimate": (200, Data(estimateJSON.utf8))
-                default: (200, Data("{}".utf8))
+                case "/v1/days/2026-09-27": (200, Data(dayJSON.utf8))
+                case "/v1/users/profile": (200, Data(profileJSON.utf8))
+                case "/v1/users/onboarding": (200, Data(onboardingJSON.utf8))
+                case "/v1/meals/estimate": (201, Data(mealJSON.utf8))
+                default: (204, Data())
                 }
             }
 
-            _ = try await api.getDailySummary()
-            _ = try await api.getTodaysMeals()
+            _ = try await api.getDay(lateEveningUTC)
             _ = try await api.getUserProfile()
             try await api.deleteMeal(id: 1)
             _ = try await api.submitOnboarding(
@@ -164,7 +166,7 @@ extension StubbedNetwork {
             )
             _ = try await api.estimateMeal(message: "apple", imageData: nil)
 
-            #expect(StubURLProtocol.requests.count == 6)
+            #expect(StubURLProtocol.requests.count == 5)
             for request in StubURLProtocol.requests {
                 #expect(request.value(forHTTPHeaderField: "X-Timezone") == "Asia/Tokyo")
             }
@@ -173,11 +175,11 @@ extension StubbedNetwork {
         @Test func timezoneIsReadForEachRequest() async throws {
             var zone = tokyo
             let api = APIClient(baseURL: base, session: StubURLProtocol.session(), timeZone: { zone })
-            respond(summaryJSON)
+            respond(dayJSON)
 
-            _ = try await api.getDailySummary()
+            _ = try await api.getDay(lateEveningUTC)
             zone = TimeZone(identifier: "Pacific/Kiritimati")!
-            _ = try await api.getDailySummary()
+            _ = try await api.getDay(lateEveningUTC)
 
             #expect(StubURLProtocol.requests.map { $0.value(forHTTPHeaderField: "X-Timezone") }
                     == ["Asia/Tokyo", "Pacific/Kiritimati"])
@@ -186,13 +188,13 @@ extension StubbedNetwork {
         @Test func estimateWaits300SecondsAndOtherRequests20() async throws {
             let api = client()
             StubURLProtocol.handler = { request in
-                request.url?.path == "/meals/estimate"
-                    ? (200, Data(estimateJSON.utf8))
-                    : (200, Data(summaryJSON.utf8))
+                request.url?.path == "/v1/meals/estimate"
+                    ? (201, Data(mealJSON.utf8))
+                    : (200, Data(dayJSON.utf8))
             }
 
             _ = try await api.estimateMeal(message: "apple", imageData: nil)
-            _ = try await api.getDailySummary()
+            _ = try await api.getDay(lateEveningUTC)
 
             #expect(StubURLProtocol.requests.map(\.timeoutInterval) == [300, 20])
         }
@@ -201,9 +203,9 @@ extension StubbedNetwork {
 
         @Test func serverErrorCarriesTheBackendMessage() async {
             let api = client()
-            respond(#"{"detail": "Meal estimation is not available right now."}"#, status: 503)
+            respond(#"{"error": {"code": "estimation_unavailable", "message": "Meal estimation is not available right now."}}"#, status: 503)
 
-            await #expect(throws: APIError.server(status: 503, message: "Meal estimation is not available right now.")) {
+            await #expect(throws: APIError.server(status: 503, code: "estimation_unavailable", message: "Meal estimation is not available right now.")) {
                 _ = try await api.estimateMeal(message: "apple", imageData: nil)
             }
         }
@@ -212,20 +214,20 @@ extension StubbedNetwork {
         @Test func photoTooLargeShowsTheBackendMessage() async throws {
             let api = client()
             let message = "The photo is too large. Please choose a smaller photo."
-            respond(#"{"detail": "The photo is too large. Please choose a smaller photo."}"#, status: 413)
+            respond(#"{"error": {"code": "image_too_large", "message": "The photo is too large. Please choose a smaller photo."}}"#, status: 413)
 
             let error = await #expect(throws: APIError.self) {
                 _ = try await api.estimateMeal(message: "lunch", imageData: Data([0xFF, 0xD8, 0xFF]))
             }
-            #expect(error == .server(status: 413, message: message))
+            #expect(error == .server(status: 413, code: "image_too_large", message: message))
             #expect(error?.localizedDescription == message)
         }
 
         @Test func notFoundOnDeleteIsAServerError() async {
             let api = client()
-            respond(#"{"detail": "Meal not found."}"#, status: 404)
+            respond(#"{"error": {"code": "meal_not_found", "message": "Meal not found."}}"#, status: 404)
 
-            await #expect(throws: APIError.server(status: 404, message: "Meal not found.")) {
+            await #expect(throws: APIError.server(status: 404, code: "meal_not_found", message: "Meal not found.")) {
                 try await api.deleteMeal(id: 999)
             }
         }
@@ -254,13 +256,13 @@ extension StubbedNetwork {
             respond(#"{"unexpected": true}"#)
 
             await #expect(throws: APIError.decoding) {
-                _ = try await api.getDailySummary()
+                _ = try await api.getDay(lateEveningUTC)
             }
         }
 
         @Test func noRetryAfterAFailure() async {
             let api = client()
-            respond(#"{"detail": "Meal estimation failed. Please try again."}"#, status: 502)
+            respond(#"{"error": {"code": "estimation_failed", "message": "Meal estimation failed. Please try again."}}"#, status: 502)
 
             _ = try? await api.estimateMeal(message: "apple", imageData: nil)
 
@@ -269,10 +271,10 @@ extension StubbedNetwork {
 
         @Test func missingBaseURLFailsWithoutARequest() async {
             let api = client(baseURL: nil)
-            respond(summaryJSON)
+            respond(dayJSON)
 
             await #expect(throws: APIError.notConfigured) {
-                _ = try await api.getDailySummary()
+                _ = try await api.getDay(lateEveningUTC)
             }
             #expect(StubURLProtocol.requests.isEmpty)
         }
