@@ -12,7 +12,16 @@ import SwiftUI
 /// stays on screen while refreshing and after a failed refresh.
 struct MealHistoryView: View {
     @Environment(NutritionStore.self) private var store
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var deleteError: String?
+
+    /// Calories trail the name; at accessibility text sizes they go under
+    /// it, so neither is squeezed.
+    private var rowLayout: AnyLayout {
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+            : AnyLayout(HStackLayout(spacing: 12))
+    }
 
     var body: some View {
         NavigationStack {
@@ -32,7 +41,7 @@ struct MealHistoryView: View {
                         }
 
                         ForEach(meals) { meal in
-                            HStack(spacing: 12) {
+                            rowLayout {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(meal.meal_name)
                                         .font(.headline)
@@ -42,13 +51,13 @@ struct MealHistoryView: View {
                                         .font(.footnote)
                                         .foregroundStyle(.textSecondary)
                                 }
-
-                                Spacer(minLength: 8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
 
                                 Text("\(meal.calories.formatted()) cal")
                                     .font(.headline)
                                     .numeric()
                                     .foregroundStyle(.textPrimary)
+                                    .lineLimit(1)
                             }
                             .padding(.vertical, 4)
                             .accessibilityElement(children: .ignore)

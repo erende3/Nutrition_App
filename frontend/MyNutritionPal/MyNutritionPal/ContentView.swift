@@ -411,10 +411,11 @@ struct CalorieRing: View {
                     .font(.subheadline)
                     .foregroundStyle(.textSecondary)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                    .minimumScaleFactor(0.5)
             }
-            // Keeps large text inside the ring.
-            .padding(.horizontal, 48)
+            // Inside the ring's 220-point opening, so large text shrinks
+            // rather than crossing the stroke.
+            .frame(maxWidth: 170)
         }
         .frame(
             maxWidth: .infinity
