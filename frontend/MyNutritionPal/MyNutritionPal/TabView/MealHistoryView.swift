@@ -61,7 +61,8 @@ struct MealHistoryView: View {
                     }
                     .overlay {
                         // Inside the list's space, so pull to refresh still works.
-                        if meals.isEmpty {
+                        // Not with a load error: the day may not really be empty.
+                        if meals.isEmpty && store.loadError == nil {
                             ContentUnavailableView(
                                 "No Meals Yet",
                                 systemImage: "fork.knife",
