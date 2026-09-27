@@ -1,0 +1,131 @@
+"""API v1, mounted at /v1 (app.py).
+
+A separate FastAPI app, so its errors use the v1 envelope
+{"error": {"code": ..., "message": ...}} while the unversioned routes keep
+{"detail": ...}. Its schema is at /v1/openapi.json.
+"""
+
+from typing import Optional
+from zoneinfo import ZoneInfo
+
+from fastapi import Depends, FastAPI, File, Form, Request, Response, UploadFile
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session
+from starlette.exceptions import HTTPException
+
+from crud import delete_meal
+from dependencies import get_current_user, get_db, get_request_timezone
+from errors import ApiError
+from models import Meal, User
+from routes import users
+from routes.meals import save_estimated_meal
+from schemas import MealResource
+
+app = FastAPI(
+    title="MyNutritionPal API",
+    version="1",
+    description="Errors are {\"error\": {\"code\", \"message\"}}, plus "
+    "\"fields\" for validation_failed.",
+)
+# Profile and onboarding are unchanged in v1.
+app.include_router(users.router)
+
+# Codes for the errors FastAPI and Starlette raise themselves.
+HTTP_ERROR_CODES = {
+    400: "bad_request",
+    404: "not_found",
+    405: "method_not_allowed",
+}
+
+
+def error_response(
+    status_code: int,
+    code: str,
+    message: str,
+    fields: list[dict] | None = None,
+    headers: dict | None = None,
+) -> JSONResponse:
+    error = {"code": code, "message": message}
+    if fields is not None:
+        error["fields"] = fields
+    return JSONResponse({"error": error}, status_code=status_code, headers=headers)
+
+
+@app.exception_handler(HTTPException)
+async def http_error(request: Request, exc: HTTPException) -> JSONResponse:
+    code = exc.code if isinstance(exc, ApiError) else HTTP_ERROR_CODES.get(exc.status_code, "http_error")
+    return error_response(exc.status_code, code, str(exc.detail), headers=exc.headers)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    # Location and message only: the submitted input is never echoed back.
+    fields = [
+        {"field": ".".join(str(part) for part in error["loc"]), "message": error["msg"]}
+        for error in exc.errors()
+    ]
+    return error_response(422, "validation_failed", "Some of the information sent wasn't valid.", fields)
+
+
+@app.exception_handler(Exception)
+async def unexpected_error(request: Request, exc: Exception) -> JSONResponse:
+    # Starlette logs the exception after this response is sent.
+    return error_response(500, "internal_error", "Something went wrong. Please try again.")
+
+
+def meal_resource(meal: Meal) -> MealResource:
+    return MealResource(
+        id=meal.id,
+        meal_name=meal.meal_name,
+        calories=meal.calories,
+        protein_g=meal.protein_g,
+        carbohydrates_g=meal.carbohydrates_g,
+        fat_g=meal.fat_g,
+        confidence=meal.confidence,
+        calorie_low=meal.calorie_low,
+        calorie_high=meal.calorie_high,
+        assumptions=(meal.ai_payload or {}).get("assumptions"),
+        source=meal.source,
+        description=meal.description,
+        local_date=meal.local_date,
+        created_at=meal.created_at,
+    )
+
+
+@app.post("/meals/estimate", status_code=201, tags=["meals"])
+async def estimate_meal(
+    message: Optional[str] = Form(default=None),
+    image: Optional[UploadFile] = File(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    tz: ZoneInfo = Depends(get_request_timezone),
+) -> MealResource:
+    """Estimate a meal from its description, a photo, or both, and save it.
+    Returns the saved meal."""
+
+    if message is not None and not message.strip():
+        message = None
+
+    if message is None and image is None:
+        raise RequestValidationError([{
+            "type": "missing",
+            "loc": ("body", "message"),
+            "msg": "Describe the meal or add a photo.",
+        }])
+
+    meal = await save_estimated_meal(db, user, tz, message, image)
+
+    return meal_resource(meal)
+
+
+@app.delete("/meals/{meal_id}", status_code=204, tags=["meals"])
+def remove_meal(
+    meal_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Response:
+    if not delete_meal(db=db, user=user, meal_id=meal_id):
+        raise ApiError(404, "meal_not_found", "Meal not found.")
+
+    return Response(status_code=204)

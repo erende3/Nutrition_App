@@ -6,6 +6,7 @@ load_dotenv()
 
 from fastapi import FastAPI
 
+import api_v1
 from routes import meals
 from routes import summary
 from routes import users
@@ -15,9 +16,11 @@ app = FastAPI(
     title="AI Nutrition Estimator",
     description="Estimate meal calories and macronutrients from text and images.",
 )
+# The unversioned routes are frozen for the app builds that still use them.
 app.include_router(meals.router)
 app.include_router(summary.router)
 app.include_router(users.router)
+app.mount("/v1", api_v1.app)
 
 
 @app.get("/")

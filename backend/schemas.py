@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 
 class NutritionEstimate(BaseModel):
@@ -163,3 +163,38 @@ class DeleteMealResponse(BaseModel):
 class HomeResponse(BaseModel):
     message: str
     documentation: str
+
+
+# API v1 (api_v1.py). Clients must ignore fields they don't know: new fields
+# may be added to these responses without a new version.
+
+
+class MealResource(BaseModel):
+    """A saved meal. Provenance (the AI provider, model, prompt version and
+    raw output) stays internal."""
+
+    id: int
+    meal_name: str
+    calories: int
+    protein_g: float
+    carbohydrates_g: float
+    fat_g: float
+    confidence: float
+    calorie_low: int
+    calorie_high: int
+    # The model's assumptions; null for meals logged before they were kept.
+    assumptions: list[str] | None
+    # null for meals logged before the source was recorded.
+    source: MealSource | None
+    # The user's own text; null when they gave none.
+    description: str | None
+    # The user's calendar date when the meal was logged.
+    local_date: date
+    # When the meal was logged, in UTC: YYYY-MM-DDTHH:MM:SSZ.
+    created_at: datetime
+
+    @field_serializer("created_at")
+    def _utc_seconds(self, value: datetime) -> str:
+        # Stored as naive UTC.
+        return value.strftime("%Y-%m-%dT%H:%M:%SZ")
+
