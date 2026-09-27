@@ -170,6 +170,10 @@ Refreshes that overlap share one request. If a refresh fails, the data already o
 
 Onboarding accepts ages 13–120, heights 3'0"–8'11" and weights 70–700 lb. A weight outside that range, or one that isn't a number, is explained on the screen and blocks Continue; it's never changed silently. These are the app's input limits, not nutrition advice.
 
+### Look and design tokens
+
+The app follows the phone's light or dark appearance. Colors are named sets in `Assets.xcassets`, each with a light and a dark value (the emerald accent is `AccentColor`), used through Xcode's generated symbols such as `Color.surface` or `.foregroundStyle(.textSecondary)`. `DesignSystem/Theme.swift` holds the two corner radii and the style for numbers; `DesignSystem/Components.swift` holds the card surface, the primary button and the inline error. Text uses Dynamic Type styles. Use these rather than fixed colors or font sizes, and check a change in both appearances and at a large accessibility text size.
+
 ### Tests
 
 ```bash

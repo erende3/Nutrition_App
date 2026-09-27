@@ -145,6 +145,18 @@ The second half of Phase 3. Plan: `docs/superpowers/plans/2026-09-27-milestone-0
 - **iOS** switches to `/v1`: one day request per refresh, the envelope's message in errors, and no placeholder text for photo-only meals.
 - **Deferred:** a public goal-history endpoint and the goal's source (until manual or macro goals make them useful), typed profile enums in OpenAPI, documenting error responses in OpenAPI, date ranges for a calendar, removing the unversioned routes.
 
+## Milestone 0.10: design system foundation (added 2026-09-27)
+
+The first part of Phase 4. Plan: `docs/superpowers/plans/2026-09-27-milestone-0.10-design-foundation.md`. iOS only, apart from one dev-server fix. No API, schema or data change.
+
+- **Direction** ("calm, native, legible"), approved from a mockup: SF Pro on Dynamic Type, one emerald accent, flat cards (a hairline border in light only), radii 12 (controls) and 16 (cards), rounded numbers. UI UX Pro Max was an input; its web fonts, landing-page pattern and a low-contrast pairing were rejected.
+- **Light and dark** follow the system. Before, only the Dashboard was forced dark, so a light-mode phone showed a dark Dashboard and a light History.
+- **Tokens** are named color sets in the asset catalog, each with light and dark values, and every text pair meets WCAG AA. Shared components only where the screens reuse them: a card surface, a primary button and an inline error.
+- **Screens restyled** with their behavior unchanged: the Dashboard, History (calories at the trailing edge; macros on one line), onboarding (the goal-adjusted notice as an info callout, with the same wording) and the root screen.
+- **Accessibility:** Dynamic Type everywhere (the stat cards and meal rows stack at accessibility sizes), VoiceOver phrases for the ring, stat cards and meals, decorative icons hidden, Reduce Motion for the ring, 44 pt minimum tap targets.
+- **Dev server:** `python app.py` now starts from a git worktree that has no `backend/.venv`.
+- **Deferred:** Phase 5 screen designs (calendar History, meal detail and edit, Settings) and the navigation structure; macro display. From 0.9, the placeholder description ("Estimate this meal from the image.") that older photo meals may carry in `/v1` responses. The real database has none today, and only a pre-0.9 app build using the unversioned estimate route can create one. It gets fixed when those routes are removed or when a meal's description is first shown (Phase 5), whichever comes first, by mapping it at read time; stored meals are never rewritten.
+
 ## Phase 1: Backend correctness
 
 **Accomplish**
@@ -268,11 +280,11 @@ The second half of Phase 3. Plan: `docs/superpowers/plans/2026-09-27-milestone-0
 
 **Depends on:** Phase 2 (stable views) and Phase 3 (macros and confidence available to design around).
 
-**Decisions:** support light mode or keep dark only (the app is currently forced dark); navigation structure, e.g. Today / History / Settings tabs, with logging as the main action.
+**Decisions:** ~~support light mode or keep dark only (the app is currently forced dark)~~ *decided in 0.10: light and dark, following the system;* navigation structure, e.g. Today / History / Settings tabs, with logging as the main action.
 
 **Not yet:** building the new features, or animation polish beyond the core components.
 
-**Done when:** every component has a SwiftUI preview; existing screens use the components; the existing screens pass an accessibility check.
+**Done when:** every component has a SwiftUI preview; existing screens use the components; the existing screens pass an accessibility check. *Milestone 0.10 did the tokens, the shared components and the restyle of the existing screens, with the accessibility baseline. The screen designs for the Phase 5 screens remain.*
 
 ## Phase 5: Core tracking features
 
