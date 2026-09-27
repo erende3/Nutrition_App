@@ -8,12 +8,28 @@
 
 import SwiftUI
 
-/// Today's meals from the shared store. Once meals have loaded, the list
-/// stays on screen while refreshing and after a failed refresh.
+/// One day's meals and totals: today (the shared day the Today tab shows)
+/// or any earlier day. Once a day has loaded, its data stays on screen while
+/// refreshing and after a failed refresh; another day's data never does.
 struct MealHistoryView: View {
     @Environment(NutritionStore.self) private var store
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var deleteError: String?
+    @State private var showingDatePicker = false
+
+    // MARK: The day on screen
+
+    private var isToday: Bool { store.pastDate == nil }
+    private var todayDate: String {
+        store.day?.date ?? APIClient.dayString(.now, in: .autoupdatingCurrent)
+    }
+    /// YYYY-MM-DD. Today's is the loaded day's, so the header always matches
+    /// the meals under it.
+    private var shownDate: String { store.pastDate ?? todayDate }
+    private var shownDay: Day? { isToday ? store.day : store.pastDay }
+    private var loadError: String? { isToday ? store.loadError : store.pastDayError }
+    private var isLoading: Bool { isToday ? store.isRefreshing : store.isLoadingPastDay }
+    private var title: String { Self.title(for: shownDate, today: todayDate) }
 
     /// Calories trail the name; at accessibility text sizes they go under
     /// it, so neither is squeezed.
@@ -25,96 +41,86 @@ struct MealHistoryView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if let meals = store.meals {
-                    List {
-                        if let loadError = store.loadError {
+            List {
+                Section {
+                    dateBar
+                }
+                .plainRow()
+
+                if let day = shownDay {
+                    if let loadError {
+                        Section {
                             LoadErrorBanner(
-                                title: "Couldn't update today's meals.",
+                                title: isToday
+                                    ? "Couldn't update today's meals."
+                                    : "Couldn't update this day's meals.",
                                 message: loadError,
-                                isRetrying: store.isRefreshing
+                                isRetrying: isLoading
                             ) {
-                                Task { await store.refresh() }
+                                Task { await refresh() }
                             }
-                            .listRowInsets(EdgeInsets())
-                            .listRowBackground(Color.clear)
+                            .padding(.horizontal)
                         }
-
-                        ForEach(meals) { meal in
-                            rowLayout {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(meal.meal_name)
-                                        .font(.headline)
-                                        .foregroundStyle(.textPrimary)
-
-                                    Text("P \(meal.protein_g, specifier: "%.0f")g · C \(meal.carbohydrates_g, specifier: "%.0f")g · F \(meal.fat_g, specifier: "%.0f")g")
-                                        .font(.footnote)
-                                        .foregroundStyle(.textSecondary)
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-
-                                Text("\(meal.calories.formatted()) cal")
-                                    .font(.headline)
-                                    .numeric()
-                                    .foregroundStyle(.textPrimary)
-                                    .lineLimit(1)
-                            }
-                            .padding(.vertical, 4)
-                            .accessibilityElement(children: .ignore)
-                            .accessibilityLabel(Self.accessibilityLabel(for: meal))
-                            .listRowBackground(Color.surface)
-                            .swipeActions(edge: .trailing) {
-                                Button(role: .destructive) {
-                                    Task {
-                                        await deleteMeal(meal)
-                                    }
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                            }
-                        }
+                        .plainRow()
                     }
-                    .scrollContentBackground(.hidden)
-                    .overlay {
-                        // Inside the list's space, so pull to refresh still works.
+
+                    Section {
+                        statCards(day)
+                    }
+                    .plainRow()
+
+                    if !day.meals.isEmpty {
+                        Section {
+                            ForEach(day.meals) { meal in
+                                mealRow(meal)
+                            }
+                        }
+                    } else if loadError == nil {
                         // Not with a load error: the day may not really be empty.
-                        if meals.isEmpty && store.loadError == nil {
-                            ContentUnavailableView(
-                                "No Meals Yet",
-                                systemImage: "fork.knife",
-                                description: Text("Your logged meals will appear here.")
-                            )
+                        Section {
+                            emptyState
                         }
+                        .plainRow()
                     }
-                } else if let loadError = store.loadError {
-                    ContentUnavailableView {
-                        Label("Couldn't Load Meals", systemImage: "exclamationmark.triangle")
-                    } description: {
-                        Text(loadError)
-                    } actions: {
-                        Button {
-                            Task {
-                                await store.refresh()
-                            }
-                        } label: {
-                            if store.isRefreshing {
-                                ProgressView()
-                            } else {
-                                Text("Retry")
-                            }
-                        }
-                        .buttonStyle(PrimaryButtonStyle(minHeight: 44))
-                        .disabled(store.isRefreshing)
+                } else if let loadError {
+                    // Nothing loaded for this day: no totals, just the error.
+                    Section {
+                        loadFailed(loadError)
                     }
+                    .plainRow()
                 } else {
-                    ProgressView("Loading meals...")
+                    Section {
+                        statCards(nil)
+                    }
+                    .plainRow()
+
+                    Section {
+                        ProgressView(isToday ? "Loading meals..." : "Loading \(title)...")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 32)
+                    }
+                    .plainRow()
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .listSectionSpacing(.compact)
+            .scrollContentBackground(.hidden)
             .background(Color.appBackground)
-            .navigationTitle("Meal History")
+            .navigationTitle("History")
+            .toolbar {
+                if !isToday {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Today") {
+                            go(to: nil)
+                        }
+                        .accessibilityLabel("Go to Today")
+                    }
+                }
+            }
             .refreshable {
-                await store.refresh()
+                await refresh()
+            }
+            .sheet(isPresented: $showingDatePicker) {
+                datePicker
             }
             .alert(
                 "Couldn't Delete Meal",
@@ -130,6 +136,259 @@ struct MealHistoryView: View {
         }
     }
 
+    // MARK: Date bar
+
+    /// Previous day, the date (which opens the calendar) and next day. At
+    /// accessibility text sizes the date gets its own row.
+    private var dateBar: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 8) {
+                    dateButton
+
+                    HStack {
+                        stepButton(by: -1)
+                        Spacer()
+                        stepButton(by: 1)
+                    }
+                }
+            } else {
+                HStack(spacing: 4) {
+                    stepButton(by: -1)
+                    dateButton
+                    stepButton(by: 1)
+                }
+            }
+        }
+        .padding(6)
+        .cardSurface()
+        .padding(.horizontal)
+    }
+
+    private var dateButton: some View {
+        Button {
+            showingDatePicker = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "calendar")
+                    .foregroundStyle(Color.accentColor)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(isToday ? "Today" : title)
+                        .font(.headline)
+                        .foregroundStyle(.textPrimary)
+
+                    if isToday {
+                        Text(title)
+                            .font(.footnote)
+                            .foregroundStyle(.textSecondary)
+                    }
+                }
+            }
+            .frame(
+                maxWidth: .infinity,
+                minHeight: 44,
+                alignment: dynamicTypeSize.isAccessibilitySize ? .leading : .center
+            )
+            .padding(.horizontal, dynamicTypeSize.isAccessibilitySize ? 10 : 0)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Date")
+        .accessibilityValue(Self.spokenDate(for: shownDate, today: todayDate))
+        .accessibilityHint("Opens a calendar. Swipe up or down to change the day.")
+        .accessibilityAddTraits(.isButton)
+        // VoiceOver reads the new value itself after an adjustment, so
+        // these don't announce it again.
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment:
+                if !isToday { go(to: Self.shifted(shownDate, by: 1), announce: false) }
+            case .decrement:
+                go(to: Self.shifted(shownDate, by: -1), announce: false)
+            @unknown default:
+                break
+            }
+        }
+    }
+
+    /// Next is dimmed on today (and VoiceOver says so): there are no future days.
+    private func stepButton(by days: Int) -> some View {
+        let side: CGFloat = dynamicTypeSize.isAccessibilitySize ? 64 : 44
+
+        return Button {
+            go(to: Self.shifted(shownDate, by: days))
+        } label: {
+            Image(systemName: days < 0 ? "chevron.left" : "chevron.right")
+                .font(.title3.weight(.semibold))
+                .frame(minWidth: side, minHeight: side)
+                .contentShape(Rectangle())
+        }
+        .disabled(days > 0 && isToday)
+        .accessibilityLabel(days < 0 ? "Previous day" : "Next day")
+    }
+
+    /// The native calendar, up to today. Tapping a day goes there.
+    private var datePicker: some View {
+        NavigationStack {
+            ScrollView {
+                DatePicker(
+                    "Date",
+                    selection: Binding(
+                        get: { Self.date(shownDate) ?? .now },
+                        set: { picked in
+                            showingDatePicker = false
+                            go(to: APIClient.dayString(picked, in: .autoupdatingCurrent))
+                        }
+                    ),
+                    in: ...Date.now,
+                    displayedComponents: .date
+                )
+                .datePickerStyle(.graphical)
+                .labelsHidden()
+                .padding()
+            }
+            .navigationTitle("Go to Date")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        showingDatePicker = false
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: Day content
+
+    /// The day's totals against the goal in effect that day; dashes while
+    /// the day first loads. Stacked at accessibility text sizes.
+    private func statCards(_ day: Day?) -> some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(spacing: 12))
+            : AnyLayout(HStackLayout(spacing: 12))
+        let number = { (value: Int?) in value.map { $0.formatted() } ?? "–" }
+
+        return layout {
+            StatCard(title: "Consumed", value: number(day?.totals.calories))
+            StatCard(title: "Remaining", value: number(day?.calories_remaining))
+            StatCard(title: "Goal", value: number(day?.goal.calories))
+        }
+        .padding(.horizontal)
+    }
+
+    private func mealRow(_ meal: Meal) -> some View {
+        rowLayout {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(meal.meal_name)
+                    .font(.headline)
+                    .foregroundStyle(.textPrimary)
+
+                Text("P \(meal.protein_g, specifier: "%.0f")g · C \(meal.carbohydrates_g, specifier: "%.0f")g · F \(meal.fat_g, specifier: "%.0f")g")
+                    .font(.footnote)
+                    .foregroundStyle(.textSecondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("\(meal.calories.formatted()) cal")
+                .font(.headline)
+                .numeric()
+                .foregroundStyle(.textPrimary)
+                .lineLimit(1)
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Self.accessibilityLabel(for: meal))
+        .listRowBackground(Color.surface)
+        .swipeActions(edge: .trailing) {
+            Button(role: .destructive) {
+                Task {
+                    await deleteMeal(meal)
+                }
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+    }
+
+    private var emptyState: some View {
+        Group {
+            if isToday {
+                ContentUnavailableView(
+                    "No Meals Yet",
+                    systemImage: "fork.knife",
+                    description: Text("Your logged meals will appear here.")
+                )
+            } else {
+                ContentUnavailableView(
+                    "No Meals",
+                    systemImage: "fork.knife",
+                    description: Text("Nothing was logged on \(title).")
+                )
+            }
+        }
+    }
+
+    private func loadFailed(_ message: String) -> some View {
+        ContentUnavailableView {
+            Label(
+                isToday ? "Couldn't Load Meals" : "Couldn't Load \(title)",
+                systemImage: "exclamationmark.triangle"
+            )
+        } description: {
+            Text(message)
+        } actions: {
+            Button {
+                Task {
+                    await refresh()
+                }
+            } label: {
+                if isLoading {
+                    ProgressView()
+                } else {
+                    Text("Retry")
+                }
+            }
+            .buttonStyle(PrimaryButtonStyle(minHeight: 44))
+            .disabled(isLoading)
+        }
+    }
+
+    // MARK: Actions
+
+    /// Shows `date` (nil or today: today). With `announce`, VoiceOver says
+    /// the new date, since the button that was used doesn't.
+    private func go(to date: String?, announce: Bool = true) {
+        store.selectDay(date)
+        Task { await store.refreshPastDay() }
+
+        if announce {
+            AccessibilityNotification.Announcement(
+                Self.spokenDate(for: shownDate, today: todayDate)
+            ).post()
+        }
+    }
+
+    private func refresh() async {
+        if isToday {
+            await store.refresh()
+        } else {
+            await store.refreshPastDay()
+        }
+    }
+
+    private func deleteMeal(_ meal: Meal) async {
+        do {
+            try await store.deleteMeal(meal)
+        } catch where !APIError.isCancellation(error) {
+            deleteError = error.localizedDescription
+        } catch {}
+    }
+
+    // MARK: Text
+
     /// One VoiceOver phrase per meal, with the units spelled out.
     static func accessibilityLabel(for meal: Meal) -> String {
         let grams = { (value: Double) in String(format: "%.0f", value) }
@@ -139,11 +398,57 @@ struct MealHistoryView: View {
             + "fat \(grams(meal.fat_g)) grams"
     }
 
-    private func deleteMeal(_ meal: Meal) async {
-        do {
-            try await store.deleteMeal(meal)
-        } catch where !APIError.isCancellation(error) {
-            deleteError = error.localizedDescription
-        } catch {}
+    /// The start of a YYYY-MM-DD day in `calendar`'s timezone.
+    static func date(_ day: String, calendar: Calendar = .autoupdatingCurrent) -> Date? {
+        let parts = day.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        return calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+    }
+
+    /// The calendar day `days` after `day` (before, if negative).
+    static func shifted(_ day: String, by days: Int, calendar: Calendar = .autoupdatingCurrent) -> String {
+        guard let start = date(day, calendar: calendar),
+              let shifted = calendar.date(byAdding: .day, value: days, to: start)
+        else { return day }
+        return APIClient.dayString(shifted, in: calendar.timeZone)
+    }
+
+    /// "Friday, Sep 25", with the year when it isn't today's year.
+    static func title(
+        for day: String,
+        today: String,
+        locale: Locale = .autoupdatingCurrent,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> String {
+        guard let date = date(day, calendar: calendar) else { return day }
+        let style = Date.FormatStyle(locale: locale, calendar: calendar, timeZone: calendar.timeZone)
+            .weekday(.wide).month(.abbreviated).day()
+        return day.prefix(4) == today.prefix(4)
+            ? date.formatted(style)
+            : date.formatted(style.year())
+    }
+
+    /// "Friday, September 25, 2026"; "Today, …" for today.
+    static func spokenDate(
+        for day: String,
+        today: String,
+        locale: Locale = .autoupdatingCurrent,
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> String {
+        guard let date = date(day, calendar: calendar) else { return day }
+        let spoken = date.formatted(
+            Date.FormatStyle(locale: locale, calendar: calendar, timeZone: calendar.timeZone)
+                .weekday(.wide).month(.wide).day().year()
+        )
+        return day == today ? "Today, \(spoken)" : spoken
+    }
+}
+
+private extension View {
+    /// A list row that is just its content: no inset, background or separator.
+    func plainRow() -> some View {
+        listRowInsets(EdgeInsets())
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
     }
 }
