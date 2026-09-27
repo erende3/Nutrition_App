@@ -134,6 +134,17 @@ The first half of Phase 3: the backend data model. Plan: `docs/superpowers/plans
 - **Deferred:** the image reference (to the storage phase) and `edited_at` (Phase 5), macro target columns (Phase 5), and exposing any of this in the API (0.9).
 - **Still open, a product decision required before Phase 5:** nutrition-policy goal bounds (goals down to 1 kcal are still possible). Onboarding input ranges are unchanged.
 
+## Milestone 0.9: API contract v1 (added 2026-09-27)
+
+The second half of Phase 3. Plan: `docs/superpowers/plans/2026-09-27-milestone-0.9-api-contract.md`. No schema change or migration (head stays `0006`).
+
+- **`/v1`** is a separate FastAPI app mounted at `/v1`, with its own schema (`/v1/openapi.json`). The unversioned routes are frozen and unchanged for app builds that still use them; their removal is a later milestone.
+- **Error envelope:** `{"error": {"code", "message"}}`, with `fields` for `validation_failed` (never echoing input); stable codes for every failure; unexpected errors are JSON. `ApiError` (an `HTTPException` with a code) keeps the unversioned `{"detail"}` bodies byte-identical.
+- **`GET /v1/days/{date}`** replaces the today/date/summary read model: the meals stored on that local date, calorie and macro totals, the goal in effect (`{"calories"}` only: the goal's source stays internal), and `calories_remaining` / `percentage` from the same code as `/summary/daily`. The date is never converted.
+- **Meals:** `POST /v1/meals/estimate` returns 201 and the saved meal (the API response is now separate from the LLM schema); `DELETE /v1/meals/{id}` returns 204. Public meal fields add `assumptions`, `source`, `description` and `local_date`; `created_at` is UTC with `Z`, to the second. The AI provider, model, prompt version and raw output stay internal. A photo meal may have no text: its description is NULL, and the estimator gets the old placeholder, so `PROMPT_VERSION` is unchanged.
+- **iOS** switches to `/v1`: one day request per refresh, the envelope's message in errors, and no placeholder text for photo-only meals.
+- **Deferred:** a public goal-history endpoint and the goal's source (until manual or macro goals make them useful), typed profile enums in OpenAPI, documenting error responses in OpenAPI, date ranges for a calendar, removing the unversioned routes.
+
 ## Phase 1: Backend correctness
 
 **Accomplish**
@@ -209,7 +220,7 @@ The first half of Phase 3: the backend data model. Plan: `docs/superpowers/plans
 
 **Accomplish**
 - A `get_current_user` dependency replaces all 8 direct calls (it still returns user 1). Audit that every query is filtered by user. *Done in Milestone 0.3.*
-- Pydantic response models for every route, one error format, and the `/v1` prefix. *Response models done in Milestone 0.3; the error format and `/v1` are planned for Milestone 0.9.*
+- Pydantic response models for every route, one error format, and the `/v1` prefix. *Response models done in Milestone 0.3; the error format and `/v1` done in Milestone 0.9.*
 - New meal fields:
   - `source` (text / photo / voice); *done in Milestone 0.8 for text and photo; voice comes with Phase 6;*
   - `description` (the user's own text); *done in 0.8;*
@@ -218,8 +229,8 @@ The first half of Phase 3: the backend data model. Plan: `docs/superpowers/plans
   - `edited_at`. *Deferred to Phase 5, with meal editing (0.8, D2).*
   - Confidence and calorie range are exposed in the API. *Done in Milestone 0.3 (`MealResponse`).*
 - A `daily_goals` table. Onboarding writes a row. The summary for date D uses the latest row whose `effective_date` is on or before D. Migrate `users.daily_calorie_goal` into it, then remove the column. *Done in Milestone 0.8 (without macro target columns, which come with Phase 5).*
-- A day endpoint, `GET /v1/days/{date}`, returning that day's meals, calorie and macro totals, and goal. It replaces the today-only endpoints. *Planned for Milestone 0.9.*
-- An estimator boundary: `estimate_nutrition(input) -> EstimateResult`, with one provider adapter module and the model chosen by config. The LLM schema is separate from the API schema. *`EstimateResult` done in Milestone 0.8, and stored meals keep the full model output (`ai_payload`); the API response is separated from the LLM schema in 0.9.*
+- A day endpoint, `GET /v1/days/{date}`, returning that day's meals, calorie and macro totals, and goal. It replaces the today-only endpoints. *Done in Milestone 0.9 (calorie and macro totals and the goal; macro targets come with Phase 5).*
+- An estimator boundary: `estimate_nutrition(input) -> EstimateResult`, with one provider adapter module and the model chosen by config. The LLM schema is separate from the API schema. *`EstimateResult` done in Milestone 0.8, and stored meals keep the full model output (`ai_payload`); the API response was separated from the LLM schema in 0.9.*
 
 **Why now:** editing, history and macros all build on this contract. Changing it after the UI depends on it would double the work.
 

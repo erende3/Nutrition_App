@@ -69,7 +69,57 @@ When an estimate fails, the API returns 503 (estimator not configured, e.g. no A
 
 **Meal photos.** An image sent to `POST /meals/estimate` must be JPEG, PNG or WebP, and its bytes must start like that type of file; otherwise the API returns 400. An image over `MAX_IMAGE_BYTES` returns 413. In both cases nothing is estimated or saved. Photos aren't stored: they go to the AI provider and are discarded.
 
-**What a saved meal records.** Besides its totals, each meal stores how it was logged (`source`: `text` or `photo`, defined once in `MealSource`), the text submitted with it exactly as received (`description`), which AI made the estimate (`ai_provider`, `ai_model` and `prompt_version`), and the model's full estimate including its assumptions (`ai_payload`). None of this is in the API responses yet. Meals logged before Milestone 0.8 have these fields empty: unknown, not guessed. `PROMPT_VERSION` in `services/nutrition_ai.py` must be bumped whenever the prompt, instructions or output schema change: a test pins each version to a hash of them and fails until the new version and its hash are added (existing entries must never be edited).
+**What a saved meal records.** Besides its totals, each meal stores how it was logged (`source`: `text` or `photo`, defined once in `MealSource`), the text submitted with it exactly as received (`description`), which AI made the estimate (`ai_provider`, `ai_model` and `prompt_version`), and the model's full estimate including its assumptions (`ai_payload`). API v1 returns `source`, `description` and the assumptions; the AI provider, model, prompt version and raw output stay internal. Meals logged before Milestone 0.8 have these fields empty: unknown, not guessed. `PROMPT_VERSION` in `services/nutrition_ai.py` must be bumped whenever the prompt, instructions or output schema change: a test pins each version to a hash of them and fails until the new version and its hash are added (existing entries must never be edited).
+
+### API v1
+
+The API is versioned under `/v1` (schema at `/v1/openapi.json`, docs at `/v1/docs`). The unversioned routes (`/meals/...`, `/summary/daily`, `/users/...`) are frozen, unchanged, for app builds that still use them, and will be removed in a later milestone. Clients must ignore response fields they don't know: fields may be added without a new version.
+
+| Request | Success | |
+|---|---|---|
+| `GET /v1/days/{YYYY-MM-DD}` | 200 day | The meals logged on that calendar date, newest first, with totals and the goal in effect that day |
+| `POST /v1/meals/estimate` | 201 meal | Multipart `message` and/or `image`; estimates and saves the meal |
+| `DELETE /v1/meals/{id}` | 204, no body | |
+| `GET /v1/users/profile` | 200 profile | Same as the unversioned route |
+| `POST /v1/users/onboarding` | 200 result | Same as the unversioned route |
+
+**Days.** `{date}` is the meal's stored `local_date`: the user's calendar date when it was logged. Reading a day never converts it (a meal logged at 23:30 in New York stays on that date wherever the user is later), so `X-Timezone` plays no part; the client asks for its own today. The goal is the one in effect that day (`{"calories": ...}`; where it came from stays internal). `calories_remaining` and `percentage` are exactly as `/summary/daily`: remaining never goes below 0, and percentage stops at 100, to 1 decimal. Macro totals are rounded to 1 decimal.
+
+```json
+{
+  "date": "2026-09-27",
+  "goal": {"calories": 2633},
+  "totals": {"calories": 1250, "protein_g": 80.5, "carbohydrates_g": 120.0, "fat_g": 40.2},
+  "calories_remaining": 1383,
+  "percentage": 47.5,
+  "meals": [{
+    "id": 17, "meal_name": "Chicken and rice", "calories": 650,
+    "protein_g": 45.0, "carbohydrates_g": 70.0, "fat_g": 15.0,
+    "confidence": 0.8, "calorie_low": 550, "calorie_high": 750,
+    "assumptions": ["1 cup cooked rice"], "source": "text",
+    "description": "chicken and rice", "local_date": "2026-09-27",
+    "created_at": "2026-09-27T18:04:11Z"
+  }]
+}
+```
+
+A meal's `created_at` is UTC, always `YYYY-MM-DDTHH:MM:SSZ`. `assumptions`, `source` and `description` are `null` for meals logged before they were recorded; `description` is also `null` for a photo meal sent without text (the estimator is then asked with the placeholder the app used to send, so the prompt version is unchanged).
+
+**Errors.** Every v1 error is JSON, `{"error": {"code": "...", "message": "..."}}`. The code is stable and machine-readable; the message is safe to show and may change. Validation errors add `"fields": [{"field": "body.age", "message": "..."}]` and never echo what was sent.
+
+| Status | Code | When |
+|---|---|---|
+| 400 | `invalid_timezone` | `X-Timezone` isn't an IANA name (estimate, onboarding) |
+| 400 | `unsupported_image_type`, `empty_image`, `invalid_image` | The photo isn't JPEG/PNG/WebP, is empty, or doesn't match its type |
+| 400 | `bad_request` | A request body that can't be parsed at all |
+| 404 | `meal_not_found`, `not_found` | No such meal (for this user); no such route |
+| 405 | `method_not_allowed` | |
+| 413 | `image_too_large` | Over `MAX_IMAGE_BYTES` |
+| 422 | `validation_failed` | Invalid body, path or date; an estimate with neither text nor photo |
+| 500 | `internal_error` | Anything unexpected; details are logged, never returned |
+| 502 / 503 / 504 | `estimation_failed` / `estimation_unavailable` / `estimation_timeout` | The AI provider failed / isn't configured / timed out |
+
+The unversioned routes return the same failures as `{"detail": ...}`, as before.
 
 ## iOS app
 
