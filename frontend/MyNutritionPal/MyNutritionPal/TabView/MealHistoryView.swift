@@ -32,22 +32,28 @@ struct MealHistoryView: View {
                         }
 
                         ForEach(meals) { meal in
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(meal.meal_name)
-                                    .font(.headline)
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(meal.meal_name)
+                                        .font(.headline)
+                                        .foregroundStyle(.textPrimary)
 
-                                Text("\(meal.calories) calories")
-                                    .font(.subheadline)
-
-                                HStack(spacing: 12) {
-                                    Text("P \(meal.protein_g, specifier: "%.0f")g")
-                                    Text("C \(meal.carbohydrates_g, specifier: "%.0f")g")
-                                    Text("F \(meal.fat_g, specifier: "%.0f")g")
+                                    Text("P \(meal.protein_g, specifier: "%.0f")g · C \(meal.carbohydrates_g, specifier: "%.0f")g · F \(meal.fat_g, specifier: "%.0f")g")
+                                        .font(.footnote)
+                                        .foregroundStyle(.textSecondary)
                                 }
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+
+                                Spacer(minLength: 8)
+
+                                Text("\(meal.calories.formatted()) cal")
+                                    .font(.headline)
+                                    .numeric()
+                                    .foregroundStyle(.textPrimary)
                             }
                             .padding(.vertical, 4)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(Self.accessibilityLabel(for: meal))
+                            .listRowBackground(Color.surface)
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) {
                                     Task {
@@ -59,6 +65,7 @@ struct MealHistoryView: View {
                             }
                         }
                     }
+                    .scrollContentBackground(.hidden)
                     .overlay {
                         // Inside the list's space, so pull to refresh still works.
                         // Not with a load error: the day may not really be empty.
@@ -87,13 +94,15 @@ struct MealHistoryView: View {
                                 Text("Retry")
                             }
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(PrimaryButtonStyle(minHeight: 44))
                         .disabled(store.isRefreshing)
                     }
                 } else {
                     ProgressView("Loading meals...")
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.appBackground)
             .navigationTitle("Meal History")
             .refreshable {
                 await store.refresh()
@@ -110,6 +119,15 @@ struct MealHistoryView: View {
                 Text(deleteError ?? "")
             }
         }
+    }
+
+    /// One VoiceOver phrase per meal, with the units spelled out.
+    static func accessibilityLabel(for meal: Meal) -> String {
+        let grams = { (value: Double) in String(format: "%.0f", value) }
+        return "\(meal.meal_name), \(meal.calories.formatted()) calories, "
+            + "protein \(grams(meal.protein_g)) grams, "
+            + "carbohydrates \(grams(meal.carbohydrates_g)) grams, "
+            + "fat \(grams(meal.fat_g)) grams"
     }
 
     private func deleteMeal(_ meal: Meal) async {

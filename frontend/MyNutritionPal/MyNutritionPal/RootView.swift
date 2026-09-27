@@ -21,10 +21,12 @@ struct RootView: View {
                 VStack(spacing: 12) {
                     Text("Unable to load profile")
                         .font(.headline)
+                        .foregroundStyle(.textPrimary)
 
                     Text(errorMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.footnote)
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.textSecondary)
 
                     Button("Retry") {
                         isLoading = true
@@ -33,7 +35,7 @@ struct RootView: View {
                             await loadProfile()
                         }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(PrimaryButtonStyle(minHeight: 44))
                 }
                 .padding()
             } else if let profile {
@@ -48,6 +50,8 @@ struct RootView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.appBackground)
         .task {
             await loadProfile()
         }

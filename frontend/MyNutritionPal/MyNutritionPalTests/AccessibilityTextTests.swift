@@ -1,8 +1,9 @@
 //
-//  CalorieRingTests.swift
+//  AccessibilityTextTests.swift
 //  MyNutritionPalTests
 //
 
+import Foundation
 import Testing
 @testable import MyNutritionPal
 
@@ -26,5 +27,23 @@ struct CalorieRingTests {
 
     @Test func beforeTheFirstLoadSaysSo() {
         #expect(CalorieRing.accessibilityValue(consumed: nil, goal: nil) == "Not loaded yet")
+    }
+}
+
+/// What VoiceOver reads for a meal in History.
+struct MealRowAccessibilityTests {
+
+    @Test func spellsOutTheUnits() throws {
+        let meal = try JSONDecoder().decode(Meal.self, from: Data("""
+        {"id": 1, "meal_name": "Chicken and rice", "calories": 650,
+         "protein_g": 45.0, "carbohydrates_g": 70.4, "fat_g": 15.0,
+         "created_at": "2026-09-27T16:04:05Z"}
+        """.utf8))
+
+        #expect(
+            MealHistoryView.accessibilityLabel(for: meal)
+                == "Chicken and rice, \(650.formatted()) calories, protein 45 grams, "
+                + "carbohydrates 70 grams, fat 15 grams"
+        )
     }
 }
