@@ -5,12 +5,15 @@ A separate FastAPI app, so its errors use the v1 envelope
 {"detail": ...}. Its schema is at /v1/openapi.json.
 """
 
-from typing import Optional
+import re
+from datetime import date
+from typing import Annotated, Optional
 from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, File, Form, Request, Response, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import BeforeValidator
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException
 
@@ -20,7 +23,8 @@ from errors import ApiError
 from models import Meal, User
 from routes import users
 from routes.meals import save_estimated_meal
-from schemas import MealResource
+from schemas import DayResponse, MealResource
+from services.summary import get_day
 
 app = FastAPI(
     title="MyNutritionPal API",
@@ -72,6 +76,16 @@ async def validation_error(request: Request, exc: RequestValidationError) -> JSO
 async def unexpected_error(request: Request, exc: Exception) -> JSONResponse:
     # Starlette logs the exception after this response is sent.
     return error_response(500, "internal_error", "Something went wrong. Please try again.")
+
+
+def _yyyy_mm_dd(value):
+    if not (isinstance(value, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", value)):
+        raise ValueError("Use a date in YYYY-MM-DD format.")
+    return value
+
+
+# A calendar date written exactly YYYY-MM-DD (plain date also takes datetimes).
+IsoDate = Annotated[date, BeforeValidator(_yyyy_mm_dd)]
 
 
 def meal_resource(meal: Meal) -> MealResource:
@@ -129,3 +143,22 @@ def remove_meal(
         raise ApiError(404, "meal_not_found", "Meal not found.")
 
     return Response(status_code=204)
+
+
+@app.get("/days/{day}", tags=["days"])
+def read_day(
+    day: IsoDate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> DayResponse:
+    """The meals logged on one of the user's calendar dates (the date in
+    their timezone when each meal was logged), newest first, with their
+    totals and the goal in effect that day. The date is never converted:
+    X-Timezone plays no part."""
+
+    result = get_day(db, user, day)
+
+    return DayResponse(
+        **{**result, "meals": [meal_resource(meal) for meal in result["meals"]]}
+    )
+

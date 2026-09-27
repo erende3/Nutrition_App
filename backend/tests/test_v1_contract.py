@@ -3,7 +3,7 @@ format, and what stays internal. JSON key order is not part of the contract.
 """
 
 import re
-from datetime import date
+from datetime import date, datetime
 
 from database import SessionLocal
 from models import Meal
@@ -82,6 +82,22 @@ def test_created_at_is_utc_with_z_to_the_second(client):
     assert meal["created_at"] == saved.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def test_created_at_has_one_format_with_or_without_microseconds(client):
+    client.get("/v1/users/profile")  # creates user 1
+    with SessionLocal() as db:
+        for created_at in (datetime(2026, 9, 27, 10, 0, 0), datetime(2026, 9, 27, 10, 0, 0, 999999)):
+            db.add(Meal(
+                user_id=1, meal_name="x", calories=1, protein_g=0,
+                carbohydrates_g=0, fat_g=0, confidence=1, calorie_low=1,
+                calorie_high=1, created_at=created_at, local_date=date(2026, 9, 27),
+            ))
+        db.commit()
+
+    meals = client.get("/v1/days/2026-09-27").json()["meals"]
+
+    assert [meal["created_at"] for meal in meals] == ["2026-09-27T10:00:00Z"] * 2
+
+
 def test_photo_meal_without_text_has_no_description(client, fake_estimator):
     for message in (None, "", "   "):
         response = log_meal(client, message, {"image": ("meal.jpg", JPEG_BYTES, "image/jpeg")})
@@ -125,6 +141,7 @@ def test_profile_and_onboarding_keep_their_shapes(client):
 # Every v1 operation's success response, as a named schema (None: no body).
 # Paths are relative to the /v1 mount.
 EXPECTED_V1_OPERATIONS = {
+    ("get", "/days/{day}"): ("200", "DayResponse"),
     ("post", "/meals/estimate"): ("201", "MealResource"),
     ("delete", "/meals/{meal_id}"): ("204", None),
     ("get", "/users/profile"): ("200", "UserProfileResponse"),

@@ -198,3 +198,31 @@ class MealResource(BaseModel):
         # Stored as naive UTC.
         return value.strftime("%Y-%m-%dT%H:%M:%SZ")
 
+
+class DayGoal(BaseModel):
+    # The goal in effect on the day. Where it came from stays internal.
+    calories: int
+
+
+class DayTotals(BaseModel):
+    """The sums of the day's meals; macros rounded to 1 decimal."""
+
+    calories: int
+    protein_g: float
+    carbohydrates_g: float
+    fat_g: float
+
+
+class DayResponse(BaseModel):
+    """One of the user's days: the meals logged on that local date, newest
+    first, with their totals against the goal in effect that day."""
+
+    date: date
+    goal: DayGoal
+    totals: DayTotals
+    # max(goal - calories, 0), as /summary/daily.
+    calories_remaining: int
+    # min(calories / goal * 100, 100), 1 decimal, as /summary/daily.
+    percentage: float
+    meals: list[MealResource]
+
