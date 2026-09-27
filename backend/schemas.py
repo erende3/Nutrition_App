@@ -191,7 +191,7 @@ class MealResource(BaseModel):
     # The user's calendar date when the meal was logged.
     local_date: date
     # When the meal was logged, in UTC: YYYY-MM-DDTHH:MM:SSZ.
-    created_at: datetime
+    created_at: datetime = Field(json_schema_extra={"format": "date-time"})
 
     @field_serializer("created_at")
     def _utc_seconds(self, value: datetime) -> str:
@@ -225,4 +225,25 @@ class DayResponse(BaseModel):
     # min(calories / goal * 100, 100), 1 decimal, as /summary/daily.
     percentage: float
     meals: list[MealResource]
+
+
+class FieldError(BaseModel):
+    # Where the problem is, e.g. "body.age" or "path.day".
+    field: str
+    message: str
+
+
+class ErrorBody(BaseModel):
+    # Stable and machine-readable; never renamed.
+    code: str
+    # Safe to show to the user; may change.
+    message: str
+    # Only for validation_failed.
+    fields: list[FieldError] | None = None
+
+
+class ErrorResponse(BaseModel):
+    """Every v1 error body (documentation only: api_v1.py builds it)."""
+
+    error: ErrorBody
 

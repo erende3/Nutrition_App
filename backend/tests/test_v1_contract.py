@@ -167,3 +167,26 @@ def test_every_v1_operation_declares_its_success_response(client):
     }
 
     assert declared == EXPECTED_V1_OPERATIONS
+
+
+def test_v1_openapi_documents_the_error_envelope_not_the_legacy_shape(client):
+    openapi = client.get("/v1/openapi.json").json()
+    schemas = openapi["components"]["schemas"]
+
+    assert "HTTPValidationError" not in schemas
+    for path, operations in openapi["paths"].items():
+        for method, operation in operations.items():
+            errors = {code: response for code, response in operation["responses"].items() if not code.startswith("2")}
+            assert set(errors) >= {"4XX", "5XX"}, (method, path)
+            for response in errors.values():
+                ref = response["content"]["application/json"]["schema"]["$ref"]
+                assert ref.endswith("/ErrorResponse"), (method, path)
+    assert set(schemas["ErrorBody"]["required"]) == {"code", "message"}
+
+
+def test_v1_openapi_types_created_at_as_a_date_time(client):
+    schemas = client.get("/v1/openapi.json").json()["components"]["schemas"]
+
+    assert schemas["MealResource"]["properties"]["created_at"] == {
+        "type": "string", "format": "date-time", "title": "Created At",
+    }

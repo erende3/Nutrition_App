@@ -23,7 +23,7 @@ from errors import ApiError
 from models import Meal, User
 from routes import users
 from routes.meals import save_estimated_meal
-from schemas import DayResponse, MealResource
+from schemas import DayResponse, ErrorResponse, MealResource
 from services.summary import get_day
 
 app = FastAPI(
@@ -32,8 +32,19 @@ app = FastAPI(
     description="Errors are {\"error\": {\"code\", \"message\"}}, plus "
     "\"fields\" for validation_failed.",
 )
+# Documents the error envelope on every operation, in place of FastAPI's
+# own 422 schema (the unversioned {"detail": [...]}).
+ERROR_RESPONSES = {
+    status: {"model": ErrorResponse, "description": description}
+    for status, description in [
+        ("422", "Validation failed (code validation_failed, with fields)"),
+        ("4XX", "Client error"),
+        ("5XX", "Server or AI provider error"),
+    ]
+}
+
 # Profile and onboarding are unchanged in v1.
-app.include_router(users.router)
+app.include_router(users.router, responses=ERROR_RESPONSES)
 
 # Codes for the errors FastAPI and Starlette raise themselves.
 HTTP_ERROR_CODES = {
@@ -74,7 +85,8 @@ async def validation_error(request: Request, exc: RequestValidationError) -> JSO
 
 @app.exception_handler(Exception)
 async def unexpected_error(request: Request, exc: Exception) -> JSONResponse:
-    # Starlette logs the exception after this response is sent.
+    # Starlette re-raises the exception after this response is sent, and the
+    # server (uvicorn) logs it.
     return error_response(500, "internal_error", "Something went wrong. Please try again.")
 
 
@@ -107,7 +119,7 @@ def meal_resource(meal: Meal) -> MealResource:
     )
 
 
-@app.post("/meals/estimate", status_code=201, tags=["meals"])
+@app.post("/meals/estimate", status_code=201, tags=["meals"], responses=ERROR_RESPONSES)
 async def estimate_meal(
     message: Optional[str] = Form(default=None),
     image: Optional[UploadFile] = File(default=None),
@@ -133,7 +145,7 @@ async def estimate_meal(
     return meal_resource(meal)
 
 
-@app.delete("/meals/{meal_id}", status_code=204, tags=["meals"])
+@app.delete("/meals/{meal_id}", status_code=204, tags=["meals"], responses=ERROR_RESPONSES)
 def remove_meal(
     meal_id: int,
     db: Session = Depends(get_db),
@@ -145,7 +157,7 @@ def remove_meal(
     return Response(status_code=204)
 
 
-@app.get("/days/{day}", tags=["days"])
+@app.get("/days/{day}", tags=["days"], responses=ERROR_RESPONSES)
 def read_day(
     day: IsoDate,
     db: Session = Depends(get_db),

@@ -73,7 +73,7 @@ When an estimate fails, the API returns 503 (estimator not configured, e.g. no A
 
 ### API v1
 
-The API is versioned under `/v1` (schema at `/v1/openapi.json`, docs at `/v1/docs`). The unversioned routes (`/meals/...`, `/summary/daily`, `/users/...`) are frozen, unchanged, for app builds that still use them, and will be removed in a later milestone. Clients must ignore response fields they don't know: fields may be added without a new version.
+The API is versioned under `/v1` (schema at `/v1/openapi.json`, docs at `/v1/docs`; every operation documents the error envelope as `ErrorResponse`). The unversioned routes (`/meals/...`, `/summary/daily`, `/users/...`) are frozen, unchanged, for app builds that still use them, and will be removed in a later milestone. Clients must ignore response fields they don't know: fields may be added without a new version.
 
 | Request | Success | |
 |---|---|---|
@@ -118,6 +118,7 @@ A meal's `created_at` is UTC, always `YYYY-MM-DDTHH:MM:SSZ`. `assumptions`, `sou
 | 422 | `validation_failed` | Invalid body, path or date; an estimate with neither text nor photo |
 | 500 | `internal_error` | Anything unexpected; details are logged, never returned |
 | 502 / 503 / 504 | `estimation_failed` / `estimation_unavailable` / `estimation_timeout` | The AI provider failed / isn't configured / timed out |
+| other | `http_error` | Any other HTTP error the framework raises (fallback; not expected in normal use) |
 
 The unversioned routes return the same failures as `{"detail": ...}`, as before.
 
