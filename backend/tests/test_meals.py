@@ -1,6 +1,7 @@
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 from starlette.datastructures import UploadFile
@@ -9,6 +10,7 @@ import config
 import services.meals
 import services.nutrition_ai
 from database import SessionLocal
+from dependencies import get_or_create_default_user
 from models import Meal
 from services import clock
 from services.nutrition_ai import EstimatorFailed, EstimatorNotConfigured, EstimatorTimeout
@@ -560,3 +562,35 @@ def test_meal_keeps_the_day_it_was_submitted_when_estimation_crosses_midnight(
     log_meal(client)
 
     assert stored_meal_times() == [(datetime(2026, 9, 26, 3, 59, 30), date(2026, 9, 25))]
+
+
+def test_log_meal_returns_the_saved_meal(fake_estimate):
+    with SessionLocal() as db:
+        meal = services.meals.log_meal(
+            db, get_or_create_default_user(db), "chicken and rice", ZoneInfo("UTC")
+        )
+
+        assert meal.id is not None
+        assert meal.meal_name == fake_estimate.meal_name
+        assert meal.description == "chicken and rice"
+
+
+def test_photo_meal_without_text_sends_the_placeholder_and_stores_no_description(
+    fake_estimator,
+):
+    with SessionLocal() as db:
+        meal = services.meals.log_meal(
+            db,
+            get_or_create_default_user(db),
+            None,
+            ZoneInfo("UTC"),
+            image_bytes=JPEG_BYTES,
+            image_content_type="image/jpeg",
+        )
+
+        assert meal.description is None
+        assert meal.source == "photo"
+
+    # The text the app sent before 0.9, so the prompt (and PROMPT_VERSION)
+    # is unchanged.
+    assert fake_estimator[0]["message"] == "Estimate this meal from the image."

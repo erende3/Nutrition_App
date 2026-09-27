@@ -12,7 +12,7 @@ def create_meal(
     user: User,
     result: EstimateResult,
     source: MealSource,
-    description: str,
+    description: str | None,
     created_at: datetime,
     local_date: date,
 ) -> Meal:

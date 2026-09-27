@@ -15,7 +15,7 @@ from crud import (
 )
 from dependencies import get_current_user, get_db, get_request_timezone
 from errors import ApiError
-from models import User
+from models import Meal, User
 from schemas import (
     ClearMealsResponse,
     DeleteMealResponse,
@@ -66,18 +66,16 @@ def meals_today(
         target_date=clock.local_today(tz),
     )
 
-@router.post("/estimate", response_model=NutritionEstimate)
-async def estimate_meal(
-    message: str = Form(...),
-    image: Optional[UploadFile] = File(default=None),
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-    tz: ZoneInfo = Depends(get_request_timezone),
-) -> NutritionEstimate:
-    """
-    Estimate calories and macros from a meal description and optional image,
-    then save the resulting meal to the database.
-    """
+async def save_estimated_meal(
+    db: Session,
+    user: User,
+    tz: ZoneInfo,
+    message: str | None,
+    image: UploadFile | None,
+) -> Meal:
+    """Check the upload, estimate the meal and save it (auto-save). Raises
+    ApiError for a bad image or a failed estimate. Shared by the unversioned
+    and /v1 estimate routes."""
 
     image_bytes = None
     image_content_type = None
@@ -135,6 +133,24 @@ async def estimate_meal(
         raise ApiError(
             *ESTIMATE_ERRORS.get(type(exc), UNEXPECTED_ESTIMATE_ERROR)
         ) from exc
+
+@router.post("/estimate", response_model=NutritionEstimate)
+async def estimate_meal(
+    message: str = Form(...),
+    image: Optional[UploadFile] = File(default=None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    tz: ZoneInfo = Depends(get_request_timezone),
+) -> NutritionEstimate:
+    """
+    Estimate calories and macros from a meal description and optional image,
+    then save the resulting meal to the database.
+    """
+
+    meal = await save_estimated_meal(db, user, tz, message, image)
+
+    # The model's estimate as saved: the response this route has always sent.
+    return NutritionEstimate.model_validate(meal.ai_payload)
 
 @router.delete("/today")
 def clear_todays_meals(
