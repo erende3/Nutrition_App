@@ -4,15 +4,34 @@
 //
 
 import Foundation
+import Testing
+
+/// Every suite that uses StubURLProtocol is nested in this one, so those
+/// suites run one test at a time and never share the stub's state.
+@Suite(.serialized) enum StubbedNetwork {}
 
 /// Answers every request of a stubbed URLSession with `handler`, and records
-/// the requests. Shared state: suites that use it must be `.serialized`.
+/// the requests. Shared state: suites that use it must be nested in
+/// `StubbedNetwork`. The handler runs on URLSession's loading thread, so it
+/// may block (to hold a response back) without blocking the test.
 ///
 /// Note: inside a URLProtocol, `request.httpBody` is nil (URLSession moves it
 /// to `httpBodyStream`); use `bodyData(of:)` to read it.
 final class StubURLProtocol: URLProtocol {
-    static var handler: ((URLRequest) throws -> (Int, Data))?
-    static var requests: [URLRequest] = []
+    // Requests can load concurrently, so the shared state is locked.
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var _handler: ((URLRequest) throws -> (Int, Data))?
+    nonisolated(unsafe) private static var _requests: [URLRequest] = []
+
+    static var handler: ((URLRequest) throws -> (Int, Data))? {
+        get { lock.withLock { _handler } }
+        set { lock.withLock { _handler = newValue } }
+    }
+
+    static var requests: [URLRequest] {
+        get { lock.withLock { _requests } }
+        set { lock.withLock { _requests = newValue } }
+    }
 
     static func session() -> URLSession {
         handler = nil
@@ -48,7 +67,7 @@ final class StubURLProtocol: URLProtocol {
     }
 
     override func startLoading() {
-        Self.requests.append(request)
+        Self.lock.withLock { Self._requests.append(request) }
 
         do {
             guard let handler = Self.handler else {
