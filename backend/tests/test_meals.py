@@ -44,6 +44,39 @@ def test_estimate_passes_image_to_estimator(client, fake_estimator):
     assert fake_estimator[0]["image_content_type"] == "image/jpeg"
 
 
+def stored_meals():
+    with SessionLocal() as db:
+        return db.query(Meal).order_by(Meal.id).all()
+
+
+def test_text_meal_records_its_source_text_and_provenance(client, fake_estimate):
+    log_meal(client, message="two eggs and toast")
+
+    [meal] = stored_meals()
+    assert meal.source == "text"
+    assert meal.description == "two eggs and toast"
+    assert meal.ai_provider == "fake-provider"
+    assert meal.ai_model == "fake-model"
+    assert meal.prompt_version == "fake-prompt"
+    assert meal.ai_payload == fake_estimate.model_dump()
+    assert meal.ai_payload["assumptions"] == ["1 cup cooked rice"]
+
+
+def test_photo_meal_records_photo_source_and_never_the_image(client, fake_estimate):
+    log_meal(client, message="lunch", files={"image": ("meal.jpg", JPEG_BYTES, "image/jpeg")})
+
+    [meal] = stored_meals()
+    assert meal.source == "photo"
+    assert meal.description == "lunch"
+    assert meal.ai_payload == fake_estimate.model_dump()
+
+
+def test_description_is_stored_exactly_as_received(client):
+    log_meal(client, message="  Soup,\n  then pie  ")
+
+    assert stored_meals()[0].description == "  Soup,\n  then pie  "
+
+
 def test_estimate_saves_meal_to_todays_list(client):
     log_meal(client)
 

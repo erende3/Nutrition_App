@@ -3,16 +3,20 @@ from datetime import date, datetime
 from sqlalchemy.orm import Session
 
 from models import Meal, User
-from schemas import NutritionEstimate, UserOnboardingRequest
+from schemas import MealSource, UserOnboardingRequest
+from services.nutrition_ai import EstimateResult
 
 
 def create_meal(
     db: Session,
     user: User,
-    estimate: NutritionEstimate,
+    result: EstimateResult,
+    source: MealSource,
+    description: str,
     created_at: datetime,
     local_date: date,
 ) -> Meal:
+    estimate = result.estimate
     meal = Meal(
         user_id=user.id,
         meal_name=estimate.meal_name,
@@ -25,6 +29,12 @@ def create_meal(
         calorie_high=estimate.calorie_high,
         created_at=created_at,
         local_date=local_date,
+        source=source.value,
+        description=description,
+        ai_provider=result.provider,
+        ai_model=result.model,
+        prompt_version=result.prompt_version,
+        ai_payload=estimate.model_dump(),
     )
 
     db.add(meal)

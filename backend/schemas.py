@@ -45,6 +45,14 @@ class NutritionEstimate(BaseModel):
         description="Important assumptions about portions and ingredients."
     )
 
+class MealSource(str, Enum):
+    """How a meal was logged. Stored as a plain string; this is the one
+    definition of the values the app writes."""
+
+    text = "text"
+    photo = "photo"
+
+
 class Sex(str, Enum):
     male = "male"
     female = "female"

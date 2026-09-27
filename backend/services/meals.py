@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from crud import create_meal
 from models import User
-from schemas import NutritionEstimate
+from schemas import MealSource, NutritionEstimate
 from services import clock
 from services.nutrition_ai import estimate_nutrition
 
@@ -27,18 +27,20 @@ def log_meal(
     # before midnight stays on the day it was submitted.
     logged_at = clock.utc_now()
 
-    estimate = estimate_nutrition(
+    result = estimate_nutrition(
         message=message,
         image_bytes=image_bytes,
         image_content_type=image_content_type,
-    ).estimate
+    )
 
     create_meal(
         db=db,
         user=user,
-        estimate=estimate,
+        result=result,
+        source=MealSource.photo if image_bytes is not None else MealSource.text,
+        description=message,
         created_at=logged_at.replace(tzinfo=None),
         local_date=logged_at.astimezone(tz).date(),
     )
 
-    return estimate
+    return result.estimate
