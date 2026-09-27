@@ -34,6 +34,18 @@ enum APIError: Error, Equatable, LocalizedError {
         return .server(status: status, message: detail?.isEmpty == false ? detail : nil)
     }
 
+    /// True when a request was cancelled (e.g. its task ended). Cancellation
+    /// isn't a failure the user needs to hear about, so callers drop it.
+    static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError {
+            return true
+        }
+        if case .transport(let urlError, _) = error as? APIError {
+            return urlError.code == .cancelled
+        }
+        return false
+    }
+
     var errorDescription: String? {
         switch self {
         case .notConfigured:

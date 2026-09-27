@@ -84,6 +84,24 @@ struct APIErrorTests {
 
         #expect(error.localizedDescription == "Meal estimation is not available right now.")
     }
+
+    // MARK: - Cancellation (never shown to the user)
+
+    @Test func cancelledURLErrorIsCancellation() {
+        #expect(APIError.isCancellation(APIError.transport(URLError(.cancelled), server: "Mac.local:8000")))
+    }
+
+    @Test func swiftCancellationErrorIsCancellation() {
+        #expect(APIError.isCancellation(CancellationError()))
+    }
+
+    @Test func timeoutIsNotCancellation() {
+        #expect(!APIError.isCancellation(APIError.transport(URLError(.timedOut), server: "Mac.local:8000")))
+    }
+
+    @Test func serverErrorIsNotCancellation() {
+        #expect(!APIError.isCancellation(APIError.server(status: 503, message: nil)))
+    }
 }
 
 struct MultipartBodyTests {
