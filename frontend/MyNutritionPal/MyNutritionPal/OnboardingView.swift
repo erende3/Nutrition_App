@@ -5,10 +5,12 @@ struct OnboardingView: View {
     
     @StateObject private var viewModel = OnboardingViewModel()
     @State private var step = 0
+    @ScaledMetric(relativeTo: .largeTitle) private var welcomeIconSize: CGFloat = 72
+    @ScaledMetric(relativeTo: .largeTitle) private var goalNumberSize: CGFloat = 56
 
     var body: some View {
         ZStack {
-            Color(red: 0.04, green: 0.05, blue: 0.08)
+            Color.appBackground
                 .ignoresSafeArea()
 
             VStack(spacing: 24) {
@@ -45,11 +47,9 @@ struct OnboardingView: View {
                         step += 1
                     } label: {
                         Text("Continue")
-                            .fontWeight(.semibold)
                             .frame(maxWidth: .infinity)
-                            .padding()
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(PrimaryButtonStyle())
                     // Body Metrics can't continue with an invalid weight.
                     .disabled(step == 2 && viewModel.weightError != nil)
                 } else if viewModel.dailyCalorieGoal == nil {
@@ -58,19 +58,16 @@ struct OnboardingView: View {
                             await viewModel.submitOnboarding()
                         }
                     } label: {
-                        if viewModel.isLoading {
-                            ProgressView()
-                                .tint(.white)
-                        } else {
-                            Text("Calculate My Goal")
-                                .fontWeight(.semibold)
+                        Group {
+                            if viewModel.isLoading {
+                                ProgressView()
+                            } else {
+                                Text("Calculate My Goal")
+                            }
                         }
+                        .frame(maxWidth: .infinity)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(.blue)
-                    .foregroundStyle(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .buttonStyle(PrimaryButtonStyle())
                     .disabled(viewModel.isLoading)
                 
             } else {
@@ -78,29 +75,25 @@ struct OnboardingView: View {
                     onComplete()
                 } label: {
                     Text("Continue to Dashboard")
-                        .fontWeight(.semibold)
                         .frame(maxWidth: .infinity)
-                        .padding()
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(PrimaryButtonStyle())
             }
 
                 if let errorMessage = viewModel.errorMessage {
-                    Text(errorMessage)
-                        .foregroundStyle(.red)
-                        .font(.caption)
+                    InlineError(message: errorMessage)
                 }
             }
             .padding(24)
         }
-        .foregroundStyle(.white)
+        .foregroundStyle(.textPrimary)
     }
 
     private var progressIndicator: some View {
         HStack(spacing: 8) {
             ForEach(0..<5, id: \.self) { index in
                 Capsule()
-                    .fill(index <= step ? Color.blue : Color.gray.opacity(0.3))
+                    .fill(index <= step ? Color.ring : Color.hairline)
                     .frame(height: 5)
             }
         }
@@ -109,8 +102,9 @@ struct OnboardingView: View {
     private var welcomeStep: some View {
         VStack(spacing: 20) {
             Image(systemName: "fork.knife.circle.fill")
-                .font(.system(size: 72))
-                .foregroundStyle(.blue)
+                .font(.system(size: welcomeIconSize))
+                .foregroundStyle(Color.accentColor)
+                .accessibilityHidden(true)
 
             Text("Welcome")
                 .font(.largeTitle)
@@ -120,7 +114,7 @@ struct OnboardingView: View {
                 "Let's personalize your nutrition plan and calculate a daily calorie goal."
             )
             .multilineTextAlignment(.center)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.textSecondary)
         }
     }
 
@@ -140,8 +134,7 @@ struct OnboardingView: View {
                     in: OnboardingViewModel.ageRange
                 )
                 .padding()
-                .background(cardBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .cardSurface()
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -171,7 +164,7 @@ struct OnboardingView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Feet")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.textSecondary)
 
                         Stepper(
                             "\(viewModel.heightFeet) ft",
@@ -179,14 +172,13 @@ struct OnboardingView: View {
                             in: OnboardingViewModel.heightFeetRange
                         )
                         .padding()
-                        .background(cardBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .cardSurface()
                     }
 
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Inches")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.textSecondary)
 
                         Stepper(
                             "\(viewModel.heightInches) in",
@@ -194,8 +186,7 @@ struct OnboardingView: View {
                             in: OnboardingViewModel.heightInchesRange
                         )
                         .padding()
-                        .background(cardBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .cardSurface()
                     }
                 }
             }
@@ -212,16 +203,13 @@ struct OnboardingView: View {
                         .multilineTextAlignment(.center)
 
                     Text("lb")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.textSecondary)
                 }
                 .padding()
-                .background(cardBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .cardSurface()
 
                 if let weightError = viewModel.weightError {
-                    Text(weightError)
-                        .font(.caption)
-                        .foregroundStyle(.red)
+                    InlineError(message: weightError)
                 }
             }
         }
@@ -250,8 +238,7 @@ struct OnboardingView: View {
                 .pickerStyle(.menu)
                 .padding()
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(cardBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .cardSurface()
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -279,18 +266,36 @@ struct OnboardingView: View {
 
             if let dailyGoal = viewModel.dailyCalorieGoal {
                 VStack(spacing: 8) {
-                    Text("\(dailyGoal)")
-                        .font(.system(size: 56, weight: .bold))
+                    Text(dailyGoal.formatted())
+                        .font(
+                            .system(
+                                size: goalNumberSize,
+                                weight: .bold,
+                                design: .rounded
+                            )
+                        )
+                        .monospacedDigit()
 
                     Text("calories per day")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.textSecondary)
                 }
 
                 if let notice = viewModel.goalAdjustedNotice {
-                    Text(notice)
-                        .font(.footnote)
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(.secondary)
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundStyle(Color.accentColor)
+                            .accessibilityHidden(true)
+
+                        Text(notice)
+                            .font(.footnote)
+                    }
+                    .padding(.vertical, 14)
+                    .padding(.horizontal, 16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        .accentTint,
+                        in: RoundedRectangle(cornerRadius: Radius.card)
+                    )
                 }
 
                 if viewModel.showsEnergyBreakdown,
@@ -299,12 +304,12 @@ struct OnboardingView: View {
                     HStack(spacing: 12) {
                         resultCard(
                             title: "BMR",
-                            value: "\(bmr)"
+                            value: bmr.formatted()
                         )
 
                         resultCard(
                             title: "Maintenance",
-                            value: "\(tdee)"
+                            value: tdee.formatted()
                         )
                     }
                 }
@@ -313,13 +318,9 @@ struct OnboardingView: View {
                     "You're ready. Tap below to calculate your personalized calorie goal."
                 )
                 .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.textSecondary)
             }
         }
-    }
-
-    private var cardBackground: Color {
-        Color.white.opacity(0.08)
     }
 
     private func resultCard(
@@ -329,15 +330,16 @@ struct OnboardingView: View {
         VStack(spacing: 6) {
             Text(title)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.textSecondary)
 
             Text(value)
                 .font(.title2)
                 .fontWeight(.bold)
+                .numeric()
         }
         .frame(maxWidth: .infinity)
         .padding()
-        .background(cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .cardSurface()
+        .accessibilityElement(children: .combine)
     }
 }
