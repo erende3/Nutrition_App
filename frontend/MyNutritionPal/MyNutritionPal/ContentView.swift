@@ -2,12 +2,6 @@ import PhotosUI
 import SwiftUI
 import UIKit
 
-/// A photo ready to upload, with a preview decoded from the same JPEG.
-private struct PreparedPhoto {
-    let jpeg: Data
-    let preview: UIImage
-}
-
 struct DashboardView: View {
     @Environment(NutritionStore.self) private var store
 
@@ -16,12 +10,8 @@ struct DashboardView: View {
 
     @State private var isLoading = false
     @State private var estimateError: String?
-    @State private var photoError: String?
-    @State private var photo: PreparedPhoto?
+    @State private var photo = PhotoDraft()
     @State private var cameraImage: UIImage?
-    @State private var isPreparingPhoto = false
-    /// Bumped on every pick, so only the newest pick's result is kept.
-    @State private var photoGeneration = 0
     @State private var showingCamera = false
     @State private var libraryItem: PhotosPickerItem?
     // Presenting the camera picker without an available camera raises an exception.
@@ -132,16 +122,25 @@ struct DashboardView: View {
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(.white)
-                        if isPreparingPhoto {
+                        if photo.isPreparing {
                             HStack {
                                 ProgressView()
                                 Text("Preparing photo...")
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
+
+                                Spacer()
+
+                                // A slow library photo (e.g. downloading from
+                                // iCloud) would otherwise block Estimate.
+                                Button("Cancel") {
+                                    photo.cancel()
+                                }
+                                .font(.subheadline)
                             }
-                        } else if let photo {
+                        } else if let prepared = photo.photo {
                             VStack(spacing: 10) {
-                                Image(uiImage: photo.preview)
+                                Image(uiImage: prepared.preview)
                                     .resizable()
                                     .scaledToFill()
                                     .frame(height: 180)
@@ -162,8 +161,7 @@ struct DashboardView: View {
                                     Spacer()
                                     
                                     Button("Remove") {
-                                        self.photo = nil
-                                        photoError = nil
+                                        photo.remove()
                                     }
                                     .font(.subheadline)
                                 }
@@ -204,9 +202,9 @@ struct DashboardView: View {
                                     in: .whitespacesAndNewlines
                                 )
                                 .isEmpty
-                                && photo == nil
+                                && photo.photo == nil
                             || isLoading
-                            || isPreparingPhoto
+                            || photo.isPreparing
                         )
                         .sheet(isPresented: $showingCamera) {
                             CameraPicker(image: $cameraImage)
@@ -214,13 +212,13 @@ struct DashboardView: View {
                         .onChange(of: cameraImage) { _, image in
                             guard let image else { return }
                             cameraImage = nil
-                            preparePhoto { image }
+                            photo.prepare { image }
                         }
                         .onChange(of: libraryItem) { _, item in
                             guard let item else { return }
                             // Cleared so picking the same photo again still triggers.
                             libraryItem = nil
-                            preparePhoto {
+                            photo.prepare {
                                 guard let data = try? await item.loadTransferable(type: Data.self) else {
                                     return nil
                                 }
@@ -228,7 +226,7 @@ struct DashboardView: View {
                             }
                         }
 
-                        if let photoError {
+                        if let photoError = photo.error {
                             Text(photoError)
                                 .foregroundStyle(.red)
                         }
@@ -299,8 +297,8 @@ struct DashboardView: View {
         )
         let submittedMeal = mealText.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        let imageData = photo?.jpeg
-        let submittedPhotoGeneration = photoGeneration
+        let imageData = photo.photo?.jpeg
+        let sentPick = photo.photoPick
 
         isLoading = true
         estimateError = nil
@@ -316,11 +314,8 @@ struct DashboardView: View {
                 lastResult = result
 
                 mealText = ""
-                // Keep a photo picked while this estimate was running.
-                if photoGeneration == submittedPhotoGeneration {
-                    photo = nil
-                    photoError = nil
-                }
+                // Keeps a photo picked while this estimate was running.
+                photo.clearAfterEstimate(sentPick: sentPick)
             } catch {
                 estimateError = error.localizedDescription
             }
@@ -341,40 +336,6 @@ struct DashboardView: View {
         .clipShape(
             RoundedRectangle(cornerRadius: 16)
         )
-    }
-
-    /// Turns a picked image into the upload JPEG off the main thread. The
-    /// newest pick wins; if this one fails, any earlier photo stays.
-    private func preparePhoto(_ load: @escaping () async -> UIImage?) {
-        photoGeneration += 1
-        let generation = photoGeneration
-        isPreparingPhoto = true
-        photoError = nil
-
-        Task {
-            var prepared: PreparedPhoto?
-            var failure = "Couldn't load that photo. Try another one."
-
-            if let image = await load() {
-                failure = "Couldn't prepare that photo. Try another one."
-                let jpeg = await Task.detached(priority: .userInitiated) {
-                    MealPhoto.uploadJPEG(from: image)
-                }.value
-
-                if let jpeg, let preview = UIImage(data: jpeg) {
-                    prepared = PreparedPhoto(jpeg: jpeg, preview: preview)
-                }
-            }
-
-            guard generation == photoGeneration else { return }
-            isPreparingPhoto = false
-
-            if let prepared {
-                photo = prepared
-            } else {
-                photoError = failure
-            }
-        }
     }
 }
 
