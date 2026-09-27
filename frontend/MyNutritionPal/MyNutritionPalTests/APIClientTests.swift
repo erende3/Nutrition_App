@@ -69,6 +69,17 @@ extension StubbedNetwork {
             #expect(try onlyRequest.url?.absoluteString == "http://Erics-Mac.local:8000/v1/days/2026-09-27")
         }
 
+        /// A calendar date chosen in History is asked for exactly, in any timezone.
+        @Test func dayForAChosenDate() async throws {
+            let api = client()
+            respond(dayJSON)
+
+            _ = try await api.getDay("2026-09-25")
+
+            #expect(try onlyRequest.httpMethod == "GET")
+            #expect(try onlyRequest.url?.absoluteString == "http://Erics-Mac.local:8000/v1/days/2026-09-25")
+        }
+
         /// The date asked for is the device's calendar date, not UTC's.
         @Test(arguments: [
             ("Asia/Tokyo", "2026-09-27"),

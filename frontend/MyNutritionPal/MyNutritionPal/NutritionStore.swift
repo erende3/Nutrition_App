@@ -6,9 +6,12 @@
 import Foundation
 import Observation
 
-/// Today (its totals, goal and meals), shared by the Dashboard and History,
+/// Today (its totals, goal and meals), shared by the Today tab and History,
 /// so both always show the same day. Only that shared server data lives here; form
 /// text, photos and each action's own errors stay in their views.
+///
+/// History can also show one past day. It's kept apart from today: browsing
+/// never changes `day`, and a past day is never today.
 ///
 /// The server is the source of truth: logging or deleting a meal refetches
 /// the day, and nothing is retried automatically (an estimate saves a meal).
@@ -31,8 +34,35 @@ final class NutritionStore {
     /// change is dropped instead of showing old data.
     private var changes = 0
 
-    init(api: APIClient = .shared) {
+    // MARK: History's past day
+
+    /// The past day History shows (YYYY-MM-DD), or nil when it shows today,
+    /// and so follows midnight. Kept while the app runs. A date that is no
+    /// longer in the past (after a timezone change) counts as today.
+    var pastDate: String? {
+        guard let selectedPastDate, selectedPastDate < today() else { return nil }
+        return selectedPastDate
+    }
+    /// That day's data: nil while it first loads, or if that failed. Always
+    /// the data of `pastDate`, never another day's.
+    private(set) var pastDay: Day?
+    private(set) var isLoadingPastDay = false
+    /// Why the past day's last load failed; cleared by the next success.
+    private(set) var pastDayError: String?
+
+    private var selectedPastDate: String?
+    /// Bumped by every past-day load and selection, so only the latest
+    /// one's result is used.
+    private var pastDayLoads = 0
+    /// Today's date (YYYY-MM-DD), worked out each time it's needed.
+    private let today: () -> String
+
+    init(
+        api: APIClient = .shared,
+        today: @escaping () -> String = { APIClient.dayString(.now, in: .autoupdatingCurrent) }
+    ) {
         self.api = api
+        self.today = today
     }
 
     /// Loads today, in one request. "Today" is worked out on each refresh,
@@ -60,11 +90,60 @@ final class NutritionStore {
     }
 
     /// Deletes a meal on the server, removes its row at once, then refetches
-    /// today's data. If the delete fails, nothing changes and it throws.
+    /// the day it was on: the past day History shows, or else today. If the
+    /// delete fails, nothing changes and it throws.
     func deleteMeal(_ meal: Meal) async throws {
         try await api.deleteMeal(id: meal.id)
-        day?.meals.removeAll { $0.id == meal.id }
-        await refreshAfterChange().value
+        if meal.local_date == pastDate {
+            pastDay?.meals.removeAll { $0.id == meal.id }
+            await refreshPastDay()
+        } else {
+            day?.meals.removeAll { $0.id == meal.id }
+            await refreshAfterChange().value
+        }
+    }
+
+    /// Shows `date` (YYYY-MM-DD) in History and loads it. Nil, today or a
+    /// later date shows today.
+    func showDay(_ date: String?) async {
+        selectDay(date)
+        await refreshPastDay()
+    }
+
+    /// Chooses the day History shows, at once. Another day's data is cleared
+    /// straight away and any load still running is dropped, so nothing is
+    /// ever shown under the wrong date. Call `refreshPastDay()` to load it.
+    func selectDay(_ date: String?) {
+        let date = date.flatMap { $0 < today() ? $0 : nil }
+        guard date != selectedPastDate || date == nil else { return }
+        selectedPastDate = date
+        pastDayLoads += 1
+        pastDay = nil
+        pastDayError = nil
+        isLoadingPastDay = false
+    }
+
+    /// Loads the past day again (nothing when History shows today). If it
+    /// fails, the data already shown stays, with `pastDayError`.
+    func refreshPastDay() async {
+        guard let date = pastDate else { return }
+        pastDayLoads += 1
+        let load = pastDayLoads
+        isLoadingPastDay = true
+        defer {
+            if load == pastDayLoads { isLoadingPastDay = false }
+        }
+
+        do {
+            let newDay = try await api.getDay(date)
+
+            guard load == pastDayLoads else { return }
+            pastDay = newDay
+            pastDayError = nil
+        } catch {
+            guard load == pastDayLoads, !APIError.isCancellation(error) else { return }
+            pastDayError = error.localizedDescription
+        }
     }
 
     /// Marks today's data as changed and fetches it again. A refresh already

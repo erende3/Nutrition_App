@@ -53,7 +53,12 @@ final class APIClient {
     /// The day containing `date` in the device's timezone: its meals, totals
     /// and goal.
     func getDay(_ date: Date) async throws -> Day {
-        try await send("GET", "/v1/days/\(Self.dayString(date, in: timeZone()))")
+        try await getDay(Self.dayString(date, in: timeZone()))
+    }
+
+    /// A calendar date (YYYY-MM-DD), asked for as is.
+    func getDay(_ date: String) async throws -> Day {
+        try await send("GET", "/v1/days/\(date)")
     }
 
     func deleteMeal(id: Int) async throws {

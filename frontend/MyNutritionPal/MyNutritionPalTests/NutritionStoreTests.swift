@@ -9,21 +9,21 @@ import Testing
 
 private let base = URL(string: "http://Erics-Mac.local:8000")!
 
-private func mealJSON(_ id: Int, name: String = "Meal", calories: Int = 100) -> String {
+private func mealJSON(_ id: Int, name: String = "Meal", calories: Int = 100, date: String = "2026-09-26") -> String {
     """
     {"id": \(id), "meal_name": "\(name) \(id)", "calories": \(calories), "protein_g": 1.0,
      "carbohydrates_g": 1.0, "fat_g": 1.0, "confidence": 0.8, "calorie_low": 90,
      "calorie_high": 110, "assumptions": [], "source": "text", "description": "x",
-     "local_date": "2026-09-26", "created_at": "2026-09-26T12:00:00Z"}
+     "local_date": "\(date)", "created_at": "\(date)T12:00:00Z"}
     """
 }
 
-private func dayJSON(consumed: Int = 100, meals ids: [Int] = [1]) -> String {
+private func dayJSON(consumed: Int = 100, meals ids: [Int] = [1], date: String = "2026-09-26") -> String {
     """
-    {"date": "2026-09-26", "goal": {"calories": 2200},
+    {"date": "\(date)", "goal": {"calories": 2200},
      "totals": {"calories": \(consumed), "protein_g": 1.0, "carbohydrates_g": 1.0, "fat_g": 1.0},
      "calories_remaining": \(max(2200 - consumed, 0)), "percentage": 0.0,
-     "meals": [\(ids.map { mealJSON($0) }.joined(separator: ","))]}
+     "meals": [\(ids.map { mealJSON($0, date: date) }.joined(separator: ","))]}
     """
 }
 
@@ -333,6 +333,268 @@ extension StubbedNetwork {
             try await delete.value
             #expect(store.meals?.map(\.id) == [8])
             #expect(store.day?.totals.calories == 100)
+        }
+    }
+
+    /// History's past day, beside today's shared state: loading any earlier
+    /// date, latest selection wins, never another date's data, deletes, and
+    /// what counts as today.
+    @Suite @MainActor struct PastDayTests {
+
+        private static let today = "2026-09-27"
+
+        private func store(today: @escaping () -> String = { PastDayTests.today }) -> NutritionStore {
+            NutritionStore(
+                api: APIClient(baseURL: base, session: StubURLProtocol.session()),
+                today: today
+            )
+        }
+
+        /// The date a day request asks for.
+        private static func date(of request: URLRequest) -> String? {
+            guard isDay(request) else { return nil }
+            return request.url?.lastPathComponent
+        }
+
+        /// Answers each day request with that date's meals from `meals`
+        /// (ids), and anything else with `other`.
+        private func respond(
+            _ meals: [String: [Int]],
+            status: Int = 200,
+            other: @escaping (URLRequest) throws -> (Int, Data) = { _ in (204, Data()) }
+        ) {
+            StubURLProtocol.handler = { request in
+                guard let date = Self.date(of: request) else { return try other(request) }
+                let ids = meals[date] ?? []
+                return (status, Data(dayJSON(consumed: 100 * ids.count, meals: ids, date: date).utf8))
+            }
+        }
+
+        private func requests(for date: String) -> Int {
+            StubURLProtocol.requests.filter { Self.date(of: $0) == date }.count
+        }
+
+        @Test func loadsThePastDayAskedFor() async {
+            let store = store()
+            respond(["2026-09-25": [7, 8]])
+
+            await store.showDay("2026-09-25")
+
+            #expect(store.pastDate == "2026-09-25")
+            #expect(store.pastDay?.date == "2026-09-25")
+            #expect(store.pastDay?.meals.map(\.id) == [7, 8])
+            #expect(store.pastDay?.totals.calories == 200)
+            #expect(store.pastDay?.goal.calories == 2200)
+            #expect(store.pastDayError == nil)
+            #expect(!store.isLoadingPastDay)
+            #expect(requests(for: "2026-09-25") == 1)
+        }
+
+        @Test func aPastDayNeverChangesToday() async {
+            let store = store()
+            StubURLProtocol.handler = { request in
+                let date = Self.date(of: request)!
+                let ids = date == "2026-09-25" ? [7] : [1]
+                return (200, Data(dayJSON(consumed: 100, meals: ids, date: date).utf8))
+            }
+            await store.refresh()
+            let today = store.day?.date
+
+            await store.showDay("2026-09-25")
+
+            #expect(store.day?.date == today)
+            #expect(store.meals?.map(\.id) == [1])
+            #expect(store.pastDay?.meals.map(\.id) == [7])
+        }
+
+        @Test(arguments: [nil, "2026-09-27", "2026-09-28", "2027-01-01"])
+        func todayOrLaterShowsToday(_ date: String?) async {
+            let store = store()
+            respond([:])
+
+            await store.showDay(date)
+
+            #expect(store.pastDate == nil)
+            #expect(store.pastDay == nil)
+            #expect(StubURLProtocol.requests.isEmpty)
+        }
+
+        @Test func switchingDaysClearsTheOldDayAtOnce() async {
+            let store = store()
+            respond(["2026-09-25": [7]])
+            await store.showDay("2026-09-25")
+
+            store.selectDay("2026-09-24")
+
+            #expect(store.pastDate == "2026-09-24")
+            #expect(store.pastDay == nil)
+            #expect(store.pastDayError == nil)
+        }
+
+        /// A slow answer for an earlier choice must not replace the newer one.
+        @Test func latestSelectionWins() async {
+            let store = store()
+            let gate = Gate()
+            StubURLProtocol.handler = { request in
+                let date = Self.date(of: request)!
+                if date == "2026-09-24" { gate.wait() }
+                return (200, Data(dayJSON(meals: date == "2026-09-24" ? [24] : [23], date: date).utf8))
+            }
+
+            let older = Task { await store.showDay("2026-09-24") }
+            await waitUntil { requests(for: "2026-09-24") == 1 }
+            await store.showDay("2026-09-23")
+            gate.open()
+            await older.value
+
+            #expect(store.pastDate == "2026-09-23")
+            #expect(store.pastDay?.date == "2026-09-23")
+            #expect(store.pastDay?.meals.map(\.id) == [23])
+            #expect(!store.isLoadingPastDay)
+        }
+
+        @Test func goingBackToTodayDropsAPastDayStillLoading() async {
+            let store = store()
+            let gate = Gate()
+            StubURLProtocol.handler = { request in
+                gate.wait()
+                return (200, Data(dayJSON(meals: [7], date: Self.date(of: request)!).utf8))
+            }
+
+            let load = Task { await store.showDay("2026-09-25") }
+            await waitUntil { StubURLProtocol.requests.count == 1 }
+            await store.showDay(nil)
+            gate.open()
+            await load.value
+
+            #expect(store.pastDate == nil)
+            #expect(store.pastDay == nil)
+            #expect(!store.isLoadingPastDay)
+        }
+
+        /// Switching to a day that fails to load shows the error, never the
+        /// day shown before.
+        @Test func aFailedNewDayShowsNoOtherDay() async {
+            let store = store()
+            respond(["2026-09-25": [7]])
+            await store.showDay("2026-09-25")
+
+            StubURLProtocol.handler = { _ in throw URLError(.notConnectedToInternet) }
+            await store.showDay("2026-09-24")
+
+            #expect(store.pastDate == "2026-09-24")
+            #expect(store.pastDay == nil)
+            #expect(store.pastDayError != nil)
+            #expect(!store.isLoadingPastDay)
+        }
+
+        @Test func aFailedRefreshKeepsTheDayShown() async {
+            let store = store()
+            respond(["2026-09-25": [7]])
+            await store.showDay("2026-09-25")
+
+            respond([:], status: 503)
+            await store.refreshPastDay()
+
+            #expect(store.pastDay?.meals.map(\.id) == [7])
+            #expect(store.pastDayError != nil)
+
+            respond(["2026-09-25": [7]])
+            await store.refreshPastDay()
+            #expect(store.pastDayError == nil)
+        }
+
+        @Test func aCancelledLoadIsNotAnError() async {
+            let store = store()
+            StubURLProtocol.handler = { _ in throw URLError(.cancelled) }
+
+            await store.showDay("2026-09-25")
+
+            #expect(store.pastDayError == nil)
+            #expect(!store.isLoadingPastDay)
+        }
+
+        @Test func deletingAPastMealRefreshesThatDayNotToday() async throws {
+            let store = store()
+            let deleted = Locked(false)
+            StubURLProtocol.handler = { request in
+                if request.httpMethod == "DELETE" {
+                    deleted.set(true)
+                    return (204, Data())
+                }
+                let date = Self.date(of: request)!
+                let ids = date == "2026-09-25" ? (deleted.get() ? [8] : [7, 8]) : [1]
+                return (200, Data(dayJSON(consumed: 100 * ids.count, meals: ids, date: date).utf8))
+            }
+            await store.refresh()
+            let todayRequests = dayRequests
+            await store.showDay("2026-09-25")
+            let meal = try #require(store.pastDay?.meals.first { $0.id == 7 })
+
+            try await store.deleteMeal(meal)
+
+            #expect(StubURLProtocol.requests.contains { $0.httpMethod == "DELETE" && $0.url?.path == "/v1/meals/7" })
+            #expect(store.pastDay?.meals.map(\.id) == [8])
+            #expect(store.pastDay?.totals.calories == 100)
+            #expect(requests(for: "2026-09-25") == 2)
+            #expect(store.meals?.map(\.id) == [1])
+            #expect(dayRequests - requests(for: "2026-09-25") == todayRequests)
+        }
+
+        /// Deleting today's meal (History on today) goes through today's
+        /// shared state, so Today sees it; a past day chosen earlier is left alone.
+        @Test func deletingTodaysMealUpdatesToday() async throws {
+            let store = store()
+            let deleted = Locked(false)
+            StubURLProtocol.handler = { request in
+                if request.httpMethod == "DELETE" {
+                    deleted.set(true)
+                    return (204, Data())
+                }
+                let date = Self.date(of: request)!
+                let ids = date == "2026-09-25" ? [7] : (deleted.get() ? [2] : [1, 2])
+                return (200, Data(dayJSON(consumed: 100 * ids.count, meals: ids, date: date).utf8))
+            }
+            await store.showDay("2026-09-25")
+            await store.refresh()
+            let meal = try #require(store.meals?.first { $0.id == 1 })
+
+            try await store.deleteMeal(meal)
+
+            #expect(store.meals?.map(\.id) == [2])
+            #expect(store.day?.totals.calories == 100)
+            #expect(store.pastDay?.meals.map(\.id) == [7])
+            #expect(requests(for: "2026-09-25") == 1)
+        }
+
+        /// Coming back to the app refreshes today; the chosen past day stays.
+        @Test func thePastDayOutlivesATodayRefresh() async {
+            let store = store()
+            StubURLProtocol.handler = { request in
+                let date = Self.date(of: request)!
+                return (200, Data(dayJSON(meals: [date == "2026-09-25" ? 7 : 1], date: date).utf8))
+            }
+            await store.showDay("2026-09-25")
+
+            await store.refresh()
+
+            #expect(store.pastDate == "2026-09-25")
+            #expect(store.pastDay?.meals.map(\.id) == [7])
+        }
+
+        /// After midnight a chosen past day stays chosen; a timezone change
+        /// that makes it today (or later) shows today instead.
+        @Test func whatCountsAsTodayFollowsTheClock() async {
+            let today = Locked(Self.today)
+            let store = store(today: { today.get() })
+            respond(["2026-09-26": [6]])
+            await store.showDay("2026-09-26")
+
+            today.set("2026-09-28")
+            #expect(store.pastDate == "2026-09-26")
+
+            today.set("2026-09-26")
+            #expect(store.pastDate == nil)
         }
     }
 }

@@ -31,6 +31,7 @@ struct ModelDecodingTests {
         #expect(meals[0].calories == 650)
         #expect(meals[0].protein_g == 45.0)
         #expect(meals[0].created_at == "2026-09-27T16:04:05Z")
+        #expect(meals[0].local_date == "2026-09-27")
     }
 
     /// Meals logged before provenance was recorded have nulls.

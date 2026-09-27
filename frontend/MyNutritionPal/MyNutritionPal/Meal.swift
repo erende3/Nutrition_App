@@ -15,5 +15,7 @@ struct Meal: Identifiable, Codable {
     let protein_g: Double
     let carbohydrates_g: Double
     let fat_g: Double
+    /// The user's calendar date when the meal was logged (YYYY-MM-DD).
+    let local_date: String
     let created_at: String
 }
