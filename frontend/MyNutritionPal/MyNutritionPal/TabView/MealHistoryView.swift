@@ -121,7 +121,10 @@ struct MealHistoryView: View {
                 await refresh()
             }
             .sheet(isPresented: $showingDatePicker) {
-                datePicker
+                HistoryDatePicker(day: shownDate) { day in
+                    // VoiceOver focus returns to the date, which reads it.
+                    if day != shownDate { go(to: day, announce: false) }
+                }
             }
             .alert(
                 "Couldn't Delete Meal",
@@ -240,39 +243,6 @@ struct MealHistoryView: View {
         .buttonStyle(.borderless)
         .disabled(days > 0 && isToday)
         .accessibilityLabel(days < 0 ? "Previous day" : "Next day")
-    }
-
-    /// The native calendar, up to today. Tapping a day goes there.
-    private var datePicker: some View {
-        NavigationStack {
-            ScrollView {
-                DatePicker(
-                    "Date",
-                    selection: Binding(
-                        get: { Self.date(shownDate) ?? .now },
-                        set: { picked in
-                            showingDatePicker = false
-                            // VoiceOver focus returns to the date, which reads it.
-                            go(to: APIClient.dayString(picked, in: .autoupdatingCurrent), announce: false)
-                        }
-                    ),
-                    in: ...Date.now,
-                    displayedComponents: .date
-                )
-                .datePickerStyle(.graphical)
-                .labelsHidden()
-                .padding()
-            }
-            .navigationTitle("Go to Date")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        showingDatePicker = false
-                    }
-                }
-            }
-        }
     }
 
     // MARK: Day content
@@ -465,6 +435,64 @@ struct MealHistoryView: View {
                 .weekday(.wide).month(.wide).day().year()
         )
         return day == today ? "Today, \(spoken)" : spoken
+    }
+}
+
+/// "Go to Date": the native calendar, up to today. Choosing a day or
+/// changing the month only changes a draft; Done goes to the chosen day,
+/// Cancel (or swiping the sheet away) leaves History where it was.
+struct HistoryDatePicker: View {
+    let onDone: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var draft: Date
+
+    /// Opens on `day` (YYYY-MM-DD), the day History shows.
+    init(day: String, onDone: @escaping (String) -> Void) {
+        _draft = State(initialValue: Self.draft(for: day))
+        self.onDone = onDone
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                DatePicker(
+                    "Date",
+                    selection: $draft,
+                    in: ...Date.now,
+                    displayedComponents: .date
+                )
+                .datePickerStyle(.graphical)
+                .labelsHidden()
+                .padding()
+            }
+            .navigationTitle("Go to Date")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        onDone(Self.day(of: draft))
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+
+    /// The calendar's starting selection for `day`: the start of that day,
+    /// or now if it can't be read.
+    static func draft(for day: String) -> Date {
+        MealHistoryView.date(day) ?? .now
+    }
+
+    /// The day Done goes to (YYYY-MM-DD, in the device's timezone).
+    static func day(of draft: Date) -> String {
+        APIClient.dayString(draft, in: .autoupdatingCurrent)
     }
 }
 

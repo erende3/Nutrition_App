@@ -63,3 +63,30 @@ struct HistoryDateTests {
                 == "Today, Sunday, September 27, 2026")
     }
 }
+
+/// The calendar sheet starts on the day History shows, and Done goes to the
+/// day chosen in it.
+struct HistoryDatePickerTests {
+
+    @Test(arguments: ["2026-09-25", "2026-09-01", "2025-12-31"])
+    func opensOnTheShownDayAndDoneReturnsIt(_ day: String) {
+        let draft = HistoryDatePicker.draft(for: day)
+
+        #expect(HistoryDatePicker.day(of: draft) == day)
+    }
+
+    @Test func aChangedDraftGoesToThatDay() throws {
+        let start = HistoryDatePicker.draft(for: "2026-09-25")
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.timeZone = .autoupdatingCurrent
+        let changed = try #require(gregorian.date(byAdding: .month, value: -1, to: start))
+
+        #expect(HistoryDatePicker.day(of: changed) == "2026-08-25")
+    }
+
+    @Test func anUnreadableDayStartsOnToday() {
+        #expect(HistoryDatePicker.day(of: HistoryDatePicker.draft(for: "not a date"))
+                == APIClient.dayString(.now, in: .autoupdatingCurrent))
+    }
+}
+
