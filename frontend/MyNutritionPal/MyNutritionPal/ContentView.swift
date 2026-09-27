@@ -4,6 +4,7 @@ import UIKit
 
 struct DashboardView: View {
     @Environment(NutritionStore.self) private var store
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var mealText = ""
     @State private var lastResult: Meal?
@@ -20,18 +21,19 @@ struct DashboardView: View {
 
     var body: some View {
         ZStack {
-            Color(red: 0.04, green: 0.05, blue: 0.08)
+            Color.appBackground
                 .ignoresSafeArea()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
+                VStack(alignment: .leading, spacing: 24) {
 
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 6) {
                             Text("TODAY")
-                                .font(.caption)
-                                .fontWeight(.bold)
-                                .foregroundStyle(.gray)
+                                .font(.footnote)
+                                .fontWeight(.semibold)
+                                .tracking(0.8)
+                                .foregroundStyle(.textSecondary)
 
                             // Only before the first load; later refreshes keep the numbers.
                             if store.day == nil && store.isRefreshing {
@@ -41,8 +43,9 @@ struct DashboardView: View {
                         }
 
                         Text("Nutrition")
-                            .font(.system(size: 36, weight: .bold))
-                            .foregroundStyle(.white)
+                            .font(.largeTitle)
+                            .fontWeight(.bold)
+                            .foregroundStyle(.textPrimary)
                     }
                     .toolbar {
                         ToolbarItemGroup(placement: .keyboard) {
@@ -69,7 +72,13 @@ struct DashboardView: View {
                         goal: store.day?.goal.calories
                     )
 
-                    HStack(spacing: 12) {
+                    // Stacked at accessibility text sizes, so the numbers
+                    // aren't squeezed.
+                    let statLayout = dynamicTypeSize.isAccessibilitySize
+                        ? AnyLayout(VStackLayout(spacing: 12))
+                        : AnyLayout(HStackLayout(spacing: 12))
+
+                    statLayout {
                         StatCard(
                             title: "Consumed",
                             value: Self.number(store.day?.totals.calories)
@@ -86,27 +95,27 @@ struct DashboardView: View {
                         )
                     }
 
-                    VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 12) {
                         Text("Log a meal")
                             .font(.title2)
                             .fontWeight(.semibold)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.textPrimary)
 
                         TextField(
                             "What did you eat?",
                             text: $mealText,
+                            prompt: Text("What did you eat?")
+                                .foregroundStyle(.textSecondary),
                             axis: .vertical
                         )
                         .focused($isMealFieldFocused)
                         .padding()
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.textPrimary)
                         .background(
-                            Color.white.opacity(0.07)
+                            .fieldFill,
+                            in: RoundedRectangle(cornerRadius: Radius.control)
                         )
-                        .clipShape(
-                            RoundedRectangle(cornerRadius: 16)
-                        )
-                        
+
                         HStack(spacing: 12) {
                             if hasCamera {
                                 Button {
@@ -121,13 +130,12 @@ struct DashboardView: View {
                             }
                         }
                         .buttonStyle(.plain)
-                        .foregroundStyle(.white)
                         if photo.isPreparing {
                             HStack {
                                 ProgressView()
                                 Text("Preparing photo...")
                                     .font(.subheadline)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.textSecondary)
 
                                 Spacer()
 
@@ -146,20 +154,21 @@ struct DashboardView: View {
                                     .frame(height: 180)
                                     .frame(maxWidth: .infinity)
                                     .clipShape(
-                                        RoundedRectangle(cornerRadius: 16)
+                                        RoundedRectangle(cornerRadius: Radius.control)
                                     )
                                     .clipped()
-                                
+
                                 HStack {
                                     Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(.green)
-                                    
+                                        .foregroundStyle(Color.accentColor)
+                                        .accessibilityHidden(true)
+
                                     Text("Photo ready to estimate")
                                         .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                    
+                                        .foregroundStyle(.textSecondary)
+
                                     Spacer()
-                                    
+
                                     Button("Remove") {
                                         photo.remove()
                                     }
@@ -171,12 +180,9 @@ struct DashboardView: View {
                         Button {
                             estimateMeal()
                         } label: {
-                            HStack {
-                                Spacer()
-
+                            HStack(spacing: 8) {
                                 if isLoading {
                                     ProgressView()
-                                        .tint(.white)
                                 }
 
                                 Text(
@@ -184,18 +190,10 @@ struct DashboardView: View {
                                     ? "Estimating..."
                                     : "Estimate Meal"
                                 )
-                                .fontWeight(.semibold)
-
-                                Spacer()
                             }
-                            .padding(.vertical, 14)
+                            .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.white)
-                        .background(Color.blue)
-                        .clipShape(
-                            RoundedRectangle(cornerRadius: 16)
-                        )
+                        .buttonStyle(PrimaryButtonStyle())
                         .disabled(
                             mealText
                                 .trimmingCharacters(
@@ -227,48 +225,45 @@ struct DashboardView: View {
                         }
 
                         if let photoError = photo.error {
-                            Text(photoError)
-                                .foregroundStyle(.red)
+                            InlineError(message: photoError)
                         }
 
                         if let estimateError {
-                            Text(estimateError)
-                                .foregroundStyle(.red)
+                            InlineError(message: estimateError)
                         }
                     }
+                    .padding()
+                    .cardSurface()
 
                     if let lastResult {
-                        VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 8) {
                             Text("Last meal added")
-                                .font(.caption)
-                                .foregroundStyle(.gray)
+                                .font(.footnote)
+                                .foregroundStyle(.textSecondary)
 
                             HStack {
-                                VStack(alignment: .leading) {
+                                VStack(alignment: .leading, spacing: 2) {
                                     Text(lastResult.meal_name)
                                         .font(.headline)
-                                        .foregroundStyle(.white)
+                                        .foregroundStyle(.textPrimary)
 
                                     Text(
-                                        "\(lastResult.calories) calories"
+                                        "\(lastResult.calories.formatted()) calories"
                                     )
-                                    .foregroundStyle(.secondary)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.textSecondary)
                                 }
 
                                 Spacer()
 
                                 Image(systemName: "checkmark.circle.fill")
                                     .font(.title2)
-                                    .foregroundStyle(.green)
+                                    .foregroundStyle(Color.accentColor)
+                                    .accessibilityHidden(true)
                             }
                         }
                         .padding()
-                        .background(
-                            Color.white.opacity(0.06)
-                        )
-                        .clipShape(
-                            RoundedRectangle(cornerRadius: 18)
-                        )
+                        .cardSurface()
                     }
 
                     Spacer(minLength: 30)
@@ -279,16 +274,15 @@ struct DashboardView: View {
                 await store.refresh()
             }
         }
-        .preferredColorScheme(.dark)
     }
 
     /// A number from the summary, or a dash before there is one.
     private static func number(_ value: Int?) -> String {
-        value.map(String.init) ?? "–"
+        value.map { $0.formatted() } ?? "–"
     }
 
     private func estimateMeal() {
-        
+
         UIApplication.shared.sendAction(
             #selector(UIResponder.resignFirstResponder),
             to: nil,
@@ -328,13 +322,13 @@ struct DashboardView: View {
         HStack {
             Image(systemName: systemImage)
             Text(title)
-                .fontWeight(.semibold)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 14)
-        .background(Color.white.opacity(0.10))
-        .clipShape(
-            RoundedRectangle(cornerRadius: 16)
+        .font(.headline)
+        .foregroundStyle(Color.accentColor)
+        .frame(maxWidth: .infinity, minHeight: 48)
+        .background(
+            .accentTint,
+            in: RoundedRectangle(cornerRadius: Radius.control)
         )
     }
 }
@@ -344,6 +338,9 @@ struct CalorieRing: View {
     /// nil before today's summary has loaded: the ring is empty and shows a dash.
     let consumed: Int?
     let goal: Int?
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .largeTitle) private var numberSize: CGFloat = 44
 
     var progress: Double {
         guard let consumed, let goal, goal > 0 else {
@@ -358,14 +355,23 @@ struct CalorieRing: View {
             return "–"
         }
 
-        return "\(max(goal - consumed, 0))"
+        return max(goal - consumed, 0).formatted()
+    }
+
+    /// What VoiceOver reads after "Calories left".
+    static func accessibilityValue(consumed: Int?, goal: Int?) -> String {
+        guard let consumed, let goal else {
+            return "Not loaded yet"
+        }
+
+        return "\(max(goal - consumed, 0).formatted()) of \(goal.formatted())"
     }
 
     var body: some View {
         ZStack {
             Circle()
                 .stroke(
-                    Color.white.opacity(0.08),
+                    .hairline,
                     lineWidth: 20
                 )
 
@@ -375,7 +381,7 @@ struct CalorieRing: View {
                     to: progress
                 )
                 .stroke(
-                    Color.blue,
+                    .ring,
                     style: StrokeStyle(
                         lineWidth: 20,
                         lineCap: .round
@@ -383,7 +389,7 @@ struct CalorieRing: View {
                 )
                 .rotationEffect(.degrees(-90))
                 .animation(
-                    .easeInOut(duration: 0.6),
+                    reduceMotion ? nil : .easeInOut(duration: 0.6),
                     value: progress
                 )
 
@@ -391,20 +397,34 @@ struct CalorieRing: View {
                 Text(remaining)
                     .font(
                         .system(
-                            size: 46,
-                            weight: .bold
+                            size: numberSize,
+                            weight: .bold,
+                            design: .rounded
                         )
                     )
-                    .foregroundStyle(.white)
+                    .monospacedDigit()
+                    .foregroundStyle(.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
 
                 Text("calories left")
-                    .foregroundStyle(.gray)
+                    .font(.subheadline)
+                    .foregroundStyle(.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
+            // Keeps large text inside the ring.
+            .padding(.horizontal, 48)
         }
         .frame(
             maxWidth: .infinity
         )
         .frame(height: 260)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Calories left")
+        .accessibilityValue(
+            Self.accessibilityValue(consumed: consumed, goal: goal)
+        )
     }
 }
 
@@ -414,23 +434,24 @@ struct StatCard: View {
     let value: String
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 4) {
             Text(title)
-                .font(.caption)
-                .foregroundStyle(.gray)
+                .font(.footnote)
+                .foregroundStyle(.textSecondary)
 
             Text(value)
-                .font(.headline)
-                .foregroundStyle(.white)
+                .font(.title3)
+                .fontWeight(.semibold)
+                .numeric()
+                .foregroundStyle(.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
-        .background(
-            Color.white.opacity(0.06)
-        )
-        .clipShape(
-            RoundedRectangle(cornerRadius: 14)
-        )
+        .padding(.horizontal, 8)
+        .cardSurface()
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -444,32 +465,41 @@ struct LoadErrorBanner: View {
     let retry: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.subheadline)
-                .fontWeight(.semibold)
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.title3)
+                .foregroundStyle(.danger)
+                .accessibilityHidden(true)
 
-            Text(message)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.textPrimary)
 
-            Button {
-                retry()
-            } label: {
-                if isRetrying {
-                    ProgressView()
-                } else {
-                    Text("Retry")
+                Text(message)
+                    .font(.footnote)
+                    .foregroundStyle(.textSecondary)
+
+                Button {
+                    retry()
+                } label: {
+                    if isRetrying {
+                        ProgressView()
+                    } else {
+                        Text("Retry")
+                    }
                 }
+                .buttonStyle(PrimaryButtonStyle(minHeight: 44))
+                .disabled(isRetrying)
+                .padding(.top, 4)
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(isRetrying)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
-        .background(Color.red.opacity(0.15))
-        .clipShape(
-            RoundedRectangle(cornerRadius: 14)
+        .background(
+            .dangerSurface,
+            in: RoundedRectangle(cornerRadius: Radius.card)
         )
     }
 }
@@ -502,5 +532,58 @@ struct ContentView: View {
                 Task { await store.refresh() }
             }
         }
+    }
+}
+
+#Preview("Components, light") {
+    ComponentsPreview()
+}
+
+#Preview("Components, dark") {
+    ComponentsPreview()
+        .preferredColorScheme(.dark)
+}
+
+#Preview("Components, largest text") {
+    ComponentsPreview()
+        .dynamicTypeSize(.accessibility5)
+}
+
+/// The shared pieces in their states, for the previews above.
+private struct ComponentsPreview: View {
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 24) {
+                CalorieRing(consumed: 1240, goal: 2633)
+                CalorieRing(consumed: nil, goal: nil)
+
+                HStack(spacing: 12) {
+                    StatCard(title: "Consumed", value: "1,240")
+                    StatCard(title: "Remaining", value: "1,393")
+                    StatCard(title: "Goal", value: "2,633")
+                }
+
+                LoadErrorBanner(
+                    title: "Couldn't update today's totals.",
+                    message: "Can't reach the server.",
+                    isRetrying: false
+                ) {}
+
+                InlineError(message: "Meal estimation is not available right now.")
+
+                Button {} label: {
+                    Text("Estimate Meal").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(PrimaryButtonStyle())
+
+                Button {} label: {
+                    Text("Estimate Meal").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(true)
+            }
+            .padding()
+        }
+        .background(Color.appBackground)
     }
 }
