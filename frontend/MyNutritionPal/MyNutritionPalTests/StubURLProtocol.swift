@@ -12,8 +12,8 @@ import Testing
 
 /// Answers every request of a stubbed URLSession with `handler`, and records
 /// the requests. Shared state: suites that use it must be nested in
-/// `StubbedNetwork`. The handler runs on URLSession's loading thread, so it
-/// may block (to hold a response back) without blocking the test.
+/// `StubbedNetwork`. The handler runs on a background queue, so it may block
+/// (to hold a response back) without blocking the test or other requests.
 ///
 /// Note: inside a URLProtocol, `request.httpBody` is nil (URLSession moves it
 /// to `httpBodyStream`); use `bodyData(of:)` to read it.
@@ -68,9 +68,18 @@ final class StubURLProtocol: URLProtocol {
 
     override func startLoading() {
         Self.lock.withLock { Self._requests.append(request) }
+        let handler = Self.handler
 
+        // Answered off the loading thread, so a handler that holds its
+        // response back doesn't hold back other requests.
+        DispatchQueue.global().async {
+            self.answer(with: handler)
+        }
+    }
+
+    private func answer(with handler: ((URLRequest) throws -> (Int, Data))?) {
         do {
-            guard let handler = Self.handler else {
+            guard let handler = handler else {
                 throw URLError(.unknown)
             }
             let (status, data) = try handler(request)
