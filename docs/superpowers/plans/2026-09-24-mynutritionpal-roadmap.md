@@ -123,6 +123,17 @@ This completes Phase 2. Plan: `docs/superpowers/plans/2026-09-26-milestone-0.7-c
 - **Onboarding:** `goal_adjusted` is decoded and explained on the results step, using the returned goal, and BMR/Maintenance are hidden when adjusted or not positive. The existing input ranges are kept in one place, and an invalid weight is explained and blocks Continue instead of being clamped silently. Unit-conversion tests added.
 - **Still open, a product decision:** nutrition-policy goal bounds. The app's accepted inputs can still produce positive goals as low as 1 kcal (a 0.7 planning sweep found about 658,000 input combinations under 1000 kcal). This must be decided before the Phase 5 goal and macro features.
 
+## Milestone 0.8: meal provenance and goal history (added 2026-09-26)
+
+The first half of Phase 3: the backend data model. Plan: `docs/superpowers/plans/2026-09-26-milestone-0.8-data-model.md`. No API response-shape change and no iOS change.
+
+- **Phase 3 is split in two.** 0.8 is the data model (this section). **Milestone 0.9 is the API contract v1:** `/v1`, the error envelope with codes, `GET /v1/days/{date}`, the estimate returning the saved meal, the new meal fields in responses, and the iOS switch-over.
+- **Estimator provenance.** `estimate_nutrition` returns an `EstimateResult`: the estimate plus the provider, the model asked (read from config at call time) and `PROMPT_VERSION`. A test pins the prompt text and output schema to the version.
+- **Meal provenance** (migration `0004`): nullable `source` (`text` / `photo`, from whether an image was sent), `description` (the submitted text, as received), `ai_provider`, `ai_model`, `prompt_version`, and `ai_payload` (the model's full estimate, including assumptions; never the image). Meals logged earlier keep NULL: unknown, not guessed. The stored meal is now independent of the LLM schema; the API response is split in 0.9.
+- **Goal history** (migrations `0005`, `0006`): `daily_goals` (`effective_date`, `calories` with `CHECK > 0`, `source`, one row per user per day). The existing goal was copied exactly with source `migrated`, effective from the user's earliest meal date. Onboarding writes a `calculated` or `default` row (the `goal_adjusted` case, now stored) for the user's today (`X-Timezone`); the same day replaces. A day's summary uses the latest goal on or before it; the profile shows the most recent. `users.daily_calorie_goal` is dropped. `GoalSource` and `MealSource` are the one definition of the source values, enforced by model validators; the columns stay plain strings.
+- **Deferred:** the image reference (to the storage phase) and `edited_at` (Phase 5), macro target columns (Phase 5), and exposing any of this in the API (0.9).
+- **Still open, a product decision required before Phase 5:** nutrition-policy goal bounds (goals down to 1 kcal are still possible). Onboarding input ranges are unchanged.
+
 ## Phase 1: Backend correctness
 
 **Accomplish**
@@ -198,17 +209,17 @@ This completes Phase 2. Plan: `docs/superpowers/plans/2026-09-26-milestone-0.7-c
 
 **Accomplish**
 - A `get_current_user` dependency replaces all 8 direct calls (it still returns user 1). Audit that every query is filtered by user. *Done in Milestone 0.3.*
-- Pydantic response models for every route, one error format, and the `/v1` prefix. *Response models done in Milestone 0.3; the error format and `/v1` are still open.*
+- Pydantic response models for every route, one error format, and the `/v1` prefix. *Response models done in Milestone 0.3; the error format and `/v1` are planned for Milestone 0.9.*
 - New meal fields:
-  - `source` (text / photo / voice);
-  - `description` (the user's own text);
-  - `ai_provider`, `ai_model`, `prompt_version`;
-  - `ai_payload` (a JSON column with assumptions and per-item breakdown);
-  - `edited_at`.
+  - `source` (text / photo / voice); *done in Milestone 0.8 for text and photo; voice comes with Phase 6;*
+  - `description` (the user's own text); *done in 0.8;*
+  - `ai_provider`, `ai_model`, `prompt_version`; *done in 0.8;*
+  - `ai_payload` (a JSON column with assumptions and per-item breakdown); *done in 0.8 (the model's full estimate);*
+  - `edited_at`. *Deferred to Phase 5, with meal editing (0.8, D2).*
   - Confidence and calorie range are exposed in the API. *Done in Milestone 0.3 (`MealResponse`).*
-- A `daily_goals` table. Onboarding writes a row. The summary for date D uses the latest row whose `effective_date` is on or before D. Migrate `users.daily_calorie_goal` into it, then remove the column.
-- A day endpoint, `GET /v1/days/{date}`, returning that day's meals, calorie and macro totals, and goal. It replaces the today-only endpoints.
-- An estimator boundary: `estimate_nutrition(input) -> EstimateResult`, with one provider adapter module and the model chosen by config. The LLM schema is separate from the API schema.
+- A `daily_goals` table. Onboarding writes a row. The summary for date D uses the latest row whose `effective_date` is on or before D. Migrate `users.daily_calorie_goal` into it, then remove the column. *Done in Milestone 0.8 (without macro target columns, which come with Phase 5).*
+- A day endpoint, `GET /v1/days/{date}`, returning that day's meals, calorie and macro totals, and goal. It replaces the today-only endpoints. *Planned for Milestone 0.9.*
+- An estimator boundary: `estimate_nutrition(input) -> EstimateResult`, with one provider adapter module and the model chosen by config. The LLM schema is separate from the API schema. *`EstimateResult` done in Milestone 0.8, and stored meals no longer depend on the LLM schema; the API response is separated in 0.9.*
 
 **Why now:** editing, history and macros all build on this contract. Changing it after the UI depends on it would double the work.
 
@@ -220,14 +231,14 @@ This completes Phase 2. Plan: `docs/superpowers/plans/2026-09-26-milestone-0.7-c
 
 **Decided (2026-09-24):**
 - Meal photos will be kept long term, for thumbnails and re-estimation.
-- Phase 3 adds only a nullable image reference on the meal (a storage key, not a URL or blob), so storage can be plugged in later.
+- Phase 3 adds only a nullable image reference on the meal (a storage key, not a URL or blob), so storage can be plugged in later. *Milestone 0.8, D2: deferred to the storage phase, since the column would stay empty until then; adding it is a small additive migration.*
 - No production image storage until the production-backend phase, where the object-storage choice is made.
 
 **Not yet:** authentication, Postgres, HealthKit, macro-target calculation, AI evaluation.
 
 **Done when:**
 - OpenAPI shows typed responses for every route.
-- A test shows that changing the goal today leaves yesterday's summary unchanged.
+- A test shows that changing the goal today leaves yesterday's summary unchanged. *Done in Milestone 0.8 (`test_changing_the_goal_today_leaves_yesterday_unchanged`).*
 - Changing the model through the environment needs no code change.
 - Every data access goes through `get_current_user`.
 

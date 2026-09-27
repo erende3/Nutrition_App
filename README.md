@@ -40,7 +40,8 @@ The schema is managed by Alembic (`backend/migrations/`). Run commands from `bac
 - **Restart `python app.py` after pulling a new migration.** Auto-reload restarts the server on code changes but does not migrate.
 - A database created before Alembic (tables but no migration history) is refused. Back it up, then stamp it once: `alembic stamp 0001_baseline`, then `alembic upgrade head`.
 - Migration `0003` fills in existing meals' local dates using `DEFAULT_TIMEZONE`. Set it explicitly when migrating data logged in a different zone from the server's.
-- **Switching branches:** code from before Milestone 0.4 cannot log meals against a migrated database (it doesn't know `local_date`). To run older code, restore your backup or run `alembic downgrade 0001_baseline` first.
+- **Switching branches:** code from before Milestone 0.4 cannot log meals against a migrated database (it doesn't know `local_date`), and code from before Milestone 0.8 can't run against revision `0006` or later (it reads `users.daily_calorie_goal`, which `0006` removes). To run older code, restore your backup, or downgrade first: `alembic downgrade 0003_meal_local_date` for 0.4–0.7 code, `alembic downgrade 0001_baseline` for older code.
+- **Back up before migrating** (`cp nutrition.db nutrition.db.pre-<version>.bak`). The backup is the real rollback: a downgrade keeps your meals, but downgrading below `0005` discards goal history (only each user's latest goal survives, in `users`), and below `0004` discards the recorded provenance of meals logged since.
 
 ### Configuration
 
@@ -60,11 +61,15 @@ All settings are read in `backend/config.py`.
 
 **Days and timezones.** Each meal stores `local_date`, the user's calendar date when it was logged. Today's meals, clearing today and the daily summary use the date in the request's timezone: the optional `X-Timezone` header (an IANA name) or `DEFAULT_TIMEZONE`. An unknown `X-Timezone` returns 400. The iOS app sends the phone's timezone on every request, so "today" is the phone's day; `DEFAULT_TIMEZONE` applies to clients that don't send the header.
 
-**Calorie goals.** A stored goal is always positive. If the calculation gives 0 or less (only possible for extreme inputs), onboarding stores the default goal (2200) and returns `goal_adjusted: true`, and the iOS app then says the default goal was used. There are no minimum or maximum goal policies yet: a positive goal is kept even when it's implausibly low (inputs the app accepts can give goals down to 1 kcal). That policy is an open product decision, due before the goal and macro features.
+**Calorie goals.** Goals are kept over time in `daily_goals`: each row is a user's goal from its `effective_date` until their next one. Onboarding sets the goal from the user's today on (in the `X-Timezone` zone); onboarding again the same day replaces that day's goal. A day's summary uses the latest goal on or before that day, so changing the goal leaves earlier days alone; the profile shows the most recent goal. With no goal (before onboarding) the default, 2200, applies. Each goal records its `source`: `calculated`, `default` (see below) or `migrated` (the goal a user had before goal history, from migration `0005`). The allowed values are defined once, in `GoalSource` (`schemas.py`).
+
+A stored goal is always positive. If the calculation gives 0 or less (only possible for extreme inputs), onboarding stores the default goal (2200) with source `default` and returns `goal_adjusted: true`, and the iOS app then says the default goal was used. There are no minimum or maximum goal policies yet: a positive goal is kept even when it's implausibly low (inputs the app accepts can give goals down to 1 kcal). **That policy is an open product decision, required before the Phase 5 goal and macro features.**
 
 When an estimate fails, the API returns 503 (estimator not configured, e.g. no API key), 504 (the AI provider timed out), 502 (the AI provider failed) or 500 (anything else), with a generic `detail` message. The underlying error is logged by the server, never returned to the client.
 
 **Meal photos.** An image sent to `POST /meals/estimate` must be JPEG, PNG or WebP, and its bytes must start like that type of file; otherwise the API returns 400. An image over `MAX_IMAGE_BYTES` returns 413. In both cases nothing is estimated or saved. Photos aren't stored: they go to the AI provider and are discarded.
+
+**What a saved meal records.** Besides its totals, each meal stores how it was logged (`source`: `text` or `photo`, defined once in `MealSource`), the text submitted with it exactly as received (`description`), which AI made the estimate (`ai_provider`, `ai_model` and `prompt_version`), and the model's full estimate including its assumptions (`ai_payload`). None of this is in the API responses yet. Meals logged before Milestone 0.8 have these fields empty: unknown, not guessed. `PROMPT_VERSION` in `services/nutrition_ai.py` must be bumped whenever the prompt, instructions or output schema change; a test fails until it is.
 
 ## iOS app
 
