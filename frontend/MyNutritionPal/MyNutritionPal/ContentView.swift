@@ -141,8 +141,12 @@ struct DashboardView: View {
 
                                 // A slow library photo (e.g. downloading from
                                 // iCloud) would otherwise block Estimate.
-                                Button("Cancel") {
+                                Button {
                                     photo.cancel()
+                                } label: {
+                                    Text("Cancel")
+                                        .frame(minHeight: 44)
+                                        .contentShape(Rectangle())
                                 }
                                 .font(.subheadline)
                             }
@@ -169,8 +173,12 @@ struct DashboardView: View {
 
                                     Spacer()
 
-                                    Button("Remove") {
+                                    Button {
                                         photo.remove()
+                                    } label: {
+                                        Text("Remove")
+                                            .frame(minHeight: 44)
+                                            .contentShape(Rectangle())
                                     }
                                     .font(.subheadline)
                                 }
@@ -452,7 +460,10 @@ struct StatCard: View {
         .padding(.vertical, 14)
         .padding(.horizontal, 8)
         .cardSurface()
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        // The dash shown before the first load.
+        .accessibilityValue(value == "–" ? "Not loaded yet" : value)
     }
 }
 

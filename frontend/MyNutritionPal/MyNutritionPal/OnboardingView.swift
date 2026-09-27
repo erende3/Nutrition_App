@@ -5,6 +5,7 @@ struct OnboardingView: View {
     
     @StateObject private var viewModel = OnboardingViewModel()
     @State private var step = 0
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .largeTitle) private var welcomeIconSize: CGFloat = 72
     @ScaledMetric(relativeTo: .largeTitle) private var goalNumberSize: CGFloat = 56
 
@@ -13,78 +14,86 @@ struct OnboardingView: View {
             Color.appBackground
                 .ignoresSafeArea()
 
-            VStack(spacing: 24) {
-                progressIndicator
+            // Scrolls only when a step doesn't fit (large text sizes);
+            // otherwise the step stays centered as before.
+            GeometryReader { geometry in
+                ScrollView {
+                    VStack(spacing: 24) {
+                        progressIndicator
 
-                Spacer()
+                        Spacer()
 
-                Group {
-                    switch step {
-                    case 0:
-                        welcomeStep
-
-                    case 1:
-                        aboutStep
-
-                    case 2:
-                        bodyMetricsStep
-
-                    case 3:
-                        lifestyleStep
-
-                    case 4:
-                        resultsStep
-
-                    default:
-                        welcomeStep
-                    }
-                }
-
-                Spacer()
-
-                if step < 4 {
-                    Button {
-                        step += 1
-                    } label: {
-                        Text("Continue")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(PrimaryButtonStyle())
-                    // Body Metrics can't continue with an invalid weight.
-                    .disabled(step == 2 && viewModel.weightError != nil)
-                } else if viewModel.dailyCalorieGoal == nil {
-                    Button {
-                        Task {
-                            await viewModel.submitOnboarding()
-                        }
-                    } label: {
                         Group {
-                            if viewModel.isLoading {
-                                ProgressView()
-                            } else {
-                                Text("Calculate My Goal")
+                            switch step {
+                            case 0:
+                                welcomeStep
+
+                            case 1:
+                                aboutStep
+
+                            case 2:
+                                bodyMetricsStep
+
+                            case 3:
+                                lifestyleStep
+
+                            case 4:
+                                resultsStep
+
+                            default:
+                                welcomeStep
                             }
                         }
-                        .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(PrimaryButtonStyle())
-                    .disabled(viewModel.isLoading)
-                
-            } else {
-                Button {
-                    onComplete()
-                } label: {
-                    Text("Continue to Dashboard")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(PrimaryButtonStyle())
-            }
 
-                if let errorMessage = viewModel.errorMessage {
-                    InlineError(message: errorMessage)
+                        Spacer()
+
+                        if step < 4 {
+                            Button {
+                                step += 1
+                            } label: {
+                                Text("Continue")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(PrimaryButtonStyle())
+                            // Body Metrics can't continue with an invalid weight.
+                            .disabled(step == 2 && viewModel.weightError != nil)
+                        } else if viewModel.dailyCalorieGoal == nil {
+                            Button {
+                                Task {
+                                    await viewModel.submitOnboarding()
+                                }
+                            } label: {
+                                Group {
+                                    if viewModel.isLoading {
+                                        ProgressView()
+                                    } else {
+                                        Text("Calculate My Goal")
+                                    }
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(PrimaryButtonStyle())
+                            .disabled(viewModel.isLoading)
+                        
+                    } else {
+                        Button {
+                            onComplete()
+                        } label: {
+                            Text("Continue to Dashboard")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(PrimaryButtonStyle())
+                    }
+
+                        if let errorMessage = viewModel.errorMessage {
+                            InlineError(message: errorMessage)
+                        }
+                    }
+                    .padding(24)
+                    .frame(minHeight: geometry.size.height)
                 }
+                .scrollBounceBehavior(.basedOnSize)
             }
-            .padding(24)
         }
         .foregroundStyle(.textPrimary)
     }
@@ -97,6 +106,8 @@ struct OnboardingView: View {
                     .frame(height: 5)
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Step \(step + 1) of 5")
     }
 
     private var welcomeStep: some View {
@@ -301,7 +312,13 @@ struct OnboardingView: View {
                 if viewModel.showsEnergyBreakdown,
                    let bmr = viewModel.bmr,
                    let tdee = viewModel.tdee {
-                    HStack(spacing: 12) {
+                    // Stacked at accessibility text sizes, so the numbers
+                    // aren't broken across lines.
+                    let cardLayout = dynamicTypeSize.isAccessibilitySize
+                        ? AnyLayout(VStackLayout(spacing: 12))
+                        : AnyLayout(HStackLayout(spacing: 12))
+
+                    cardLayout {
                         resultCard(
                             title: "BMR",
                             value: bmr.formatted()
@@ -336,6 +353,8 @@ struct OnboardingView: View {
                 .font(.title2)
                 .fontWeight(.bold)
                 .numeric()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity)
         .padding()
