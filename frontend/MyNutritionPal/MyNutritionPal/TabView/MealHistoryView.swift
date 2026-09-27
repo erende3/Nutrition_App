@@ -8,37 +8,29 @@
 
 import SwiftUI
 
+/// Today's meals from the shared store. Once meals have loaded, the list
+/// stays on screen while refreshing and after a failed refresh.
 struct MealHistoryView: View {
-    @State private var meals: [Meal] = []
-    @State private var isLoading = true
-    @State private var errorMessage: String?
+    @Environment(NutritionStore.self) private var store
+    @State private var deleteError: String?
 
     var body: some View {
         NavigationStack {
             Group {
-                if isLoading {
-                    ProgressView("Loading meals...")
-                } else if let errorMessage {
-                    VStack(spacing: 12) {
-                        Text(errorMessage)
-                            .foregroundStyle(.red)
-
-                        Button("Retry") {
-                            Task {
-                                await loadMeals()
-                            }
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                    .padding()
-                } else if meals.isEmpty {
-                    ContentUnavailableView(
-                        "No Meals Yet",
-                        systemImage: "fork.knife",
-                        description: Text("Your logged meals will appear here.")
-                    )
-                } else {
+                if let meals = store.meals {
                     List {
+                        if let loadError = store.loadError {
+                            LoadErrorBanner(
+                                title: "Couldn't update today's meals.",
+                                message: loadError,
+                                isRetrying: store.isRefreshing
+                            ) {
+                                Task { await store.refresh() }
+                            }
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
+                        }
+
                         ForEach(meals) { meal in
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(meal.meal_name)
@@ -67,40 +59,63 @@ struct MealHistoryView: View {
                             }
                         }
                     }
+                    .overlay {
+                        // Inside the list's space, so pull to refresh still works.
+                        if meals.isEmpty {
+                            ContentUnavailableView(
+                                "No Meals Yet",
+                                systemImage: "fork.knife",
+                                description: Text("Your logged meals will appear here.")
+                            )
+                        }
+                    }
+                } else if let loadError = store.loadError {
+                    ContentUnavailableView {
+                        Label("Couldn't Load Meals", systemImage: "exclamationmark.triangle")
+                    } description: {
+                        Text(loadError)
+                    } actions: {
+                        Button {
+                            Task {
+                                await store.refresh()
+                            }
+                        } label: {
+                            if store.isRefreshing {
+                                ProgressView()
+                            } else {
+                                Text("Retry")
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(store.isRefreshing)
+                    }
+                } else {
+                    ProgressView("Loading meals...")
                 }
             }
             .navigationTitle("Meal History")
-            .task {
-                await loadMeals()
-            }
             .refreshable {
-                await loadMeals()
+                await store.refresh()
+            }
+            .alert(
+                "Couldn't Delete Meal",
+                isPresented: Binding(
+                    get: { deleteError != nil },
+                    set: { if !$0 { deleteError = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(deleteError ?? "")
             }
         }
-    }
-
-    private func loadMeals() async {
-        isLoading = true
-        errorMessage = nil
-
-        do {
-            meals = try await APIClient.shared.getTodaysMeals()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-
-        isLoading = false
     }
 
     private func deleteMeal(_ meal: Meal) async {
         do {
-            try await APIClient.shared.deleteMeal(id: meal.id)
-
-            meals.removeAll {
-                $0.id == meal.id
-            }
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+            try await store.deleteMeal(meal)
+        } catch where !APIError.isCancellation(error) {
+            deleteError = error.localizedDescription
+        } catch {}
     }
 }
