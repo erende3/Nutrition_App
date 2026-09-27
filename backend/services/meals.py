@@ -31,7 +31,7 @@ def log_meal(
         message=message,
         image_bytes=image_bytes,
         image_content_type=image_content_type,
-    )
+    ).estimate
 
     create_meal(
         db=db,

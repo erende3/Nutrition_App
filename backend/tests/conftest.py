@@ -25,6 +25,7 @@ import services.meals
 import services.nutrition_ai
 from database import Base, engine
 from schemas import NutritionEstimate
+from services.nutrition_ai import EstimateResult
 
 FAKE_ESTIMATE = NutritionEstimate(
     meal_name="Chicken and rice",
@@ -37,6 +38,16 @@ FAKE_ESTIMATE = NutritionEstimate(
     calorie_high=750,
     assumptions=["1 cup cooked rice"],
 )
+
+
+def as_result(estimate):
+    """An estimate as the fake estimator returns it, with fake provenance."""
+    return EstimateResult(
+        estimate=estimate,
+        provider="fake-provider",
+        model="fake-model",
+        prompt_version="fake-prompt",
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -78,7 +89,7 @@ def fake_estimator(monkeypatch):
                 "image_content_type": image_content_type,
             }
         )
-        return FAKE_ESTIMATE
+        return as_result(FAKE_ESTIMATE)
 
     monkeypatch.setattr(services.meals, "estimate_nutrition", estimate)
     return calls
@@ -87,6 +98,12 @@ def fake_estimator(monkeypatch):
 @pytest.fixture
 def fake_estimate():
     return FAKE_ESTIMATE
+
+
+@pytest.fixture
+def fake_result():
+    """Wraps an estimate the way the estimator returns it."""
+    return as_result
 
 
 @pytest.fixture

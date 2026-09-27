@@ -1,4 +1,6 @@
 import base64
+import hashlib
+import json
 from types import SimpleNamespace
 
 import httpx
@@ -9,6 +11,9 @@ from pydantic import ValidationError
 import config
 from schemas import NutritionEstimate
 from services.nutrition_ai import (
+    INSTRUCTIONS,
+    PROMPT,
+    PROMPT_VERSION,
     EstimatorFailed,
     EstimatorNotConfigured,
     EstimatorTimeout,
@@ -51,7 +56,15 @@ def validation_error():
 
 
 def test_returns_the_parsed_estimate(fake_openai, fake_estimate):
-    assert estimate_nutrition("two eggs") == fake_estimate
+    assert estimate_nutrition("two eggs").estimate == fake_estimate
+
+
+def test_result_records_provider_model_and_prompt_version(fake_openai):
+    result = estimate_nutrition("two eggs")
+
+    assert result.provider == "openai"
+    assert result.model == config.OPENAI_MODEL
+    assert result.prompt_version == PROMPT_VERSION
 
 
 def test_client_uses_configured_timeout_retries_and_model(fake_openai):
@@ -73,6 +86,29 @@ def test_model_follows_config(fake_openai, monkeypatch):
     estimate_nutrition("two eggs")
 
     assert fake_openai.calls[0]["model"] == "some-other-model"
+
+
+def test_recorded_model_follows_config(fake_openai, monkeypatch):
+    monkeypatch.setattr(config, "OPENAI_MODEL", "some-other-model")
+
+    assert estimate_nutrition("two eggs").model == "some-other-model"
+
+
+# The prompt, instructions and output schema each prompt version was made of.
+# Changing any of them changes the hash: bump PROMPT_VERSION in
+# services/nutrition_ai.py, then add the new version and hash here.
+PROMPT_HASHES = {
+    "1": "ac64dc3a2289e768575966c1bcfebc08c85d4daf0fc1e493dc2c0750219e70f9",
+}
+
+
+def test_prompt_is_pinned_to_its_version():
+    prompt = json.dumps(
+        [INSTRUCTIONS, PROMPT, NutritionEstimate.model_json_schema()],
+        sort_keys=True,
+    )
+
+    assert hashlib.sha256(prompt.encode()).hexdigest() == PROMPT_HASHES[PROMPT_VERSION]
 
 
 def test_prompt_contains_message_and_no_image_part(fake_openai):

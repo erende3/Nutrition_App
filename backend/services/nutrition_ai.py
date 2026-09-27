@@ -1,5 +1,6 @@
 import base64
 import os
+from dataclasses import dataclass
 from functools import lru_cache
 
 from pydantic import ValidationError
@@ -22,6 +23,40 @@ class EstimatorTimeout(EstimatorError):
 
 class EstimatorFailed(EstimatorError):
     """The AI provider failed or returned no usable estimate."""
+
+
+PROVIDER = "openai"
+
+# Bump when INSTRUCTIONS, PROMPT or the NutritionEstimate schema changes, so
+# each saved meal records which prompt produced it. A test pins the hash.
+PROMPT_VERSION = "1"
+
+INSTRUCTIONS = (
+    "You are a careful nutrition-estimation assistant. "
+    "Provide approximate calorie and macronutrient estimates. "
+    "Do not present estimates as exact measurements. "
+    "List important assumptions, especially uncertain "
+    "portion sizes."
+)
+
+PROMPT = (
+    "Estimate the nutrition of the meal described below. "
+    "Use the image when one is provided. "
+    "Account for visible portion sizes, sauces, oils, "
+    "drinks, and side dishes. Give a realistic range "
+    "rather than pretending the estimate is exact.\n\n"
+    "User description: {message}"
+)
+
+
+@dataclass(frozen=True)
+class EstimateResult:
+    """An estimate and what produced it."""
+
+    estimate: NutritionEstimate
+    provider: str
+    model: str
+    prompt_version: str
 
 
 @lru_cache(maxsize=1)
@@ -55,7 +90,7 @@ def estimate_nutrition(
     message: str,
     image_bytes: bytes | None = None,
     image_content_type: str | None = None,
-) -> NutritionEstimate:
+) -> EstimateResult:
     """Estimate nutrition from meal text and an optional image."""
 
     if not os.environ.get("OPENAI_API_KEY"):
@@ -68,14 +103,7 @@ def estimate_nutrition(
     content: list[dict] = [
         {
             "type": "input_text",
-            "text": (
-                "Estimate the nutrition of the meal described below. "
-                "Use the image when one is provided. "
-                "Account for visible portion sizes, sauces, oils, "
-                "drinks, and side dishes. Give a realistic range "
-                "rather than pretending the estimate is exact.\n\n"
-                f"User description: {message}"
-            ),
+            "text": PROMPT.format(message=message),
         }
     ]
 
@@ -93,16 +121,13 @@ def estimate_nutrition(
             }
         )
 
+    # Read once, so the model recorded is the model asked.
+    model = config.OPENAI_MODEL
+
     try:
         response = _client().responses.parse(
-            model=config.OPENAI_MODEL,
-            instructions=(
-                "You are a careful nutrition-estimation assistant. "
-                "Provide approximate calorie and macronutrient estimates. "
-                "Do not present estimates as exact measurements. "
-                "List important assumptions, especially uncertain "
-                "portion sizes."
-            ),
+            model=model,
+            instructions=INSTRUCTIONS,
             input=[
                 {
                     "role": "user",
@@ -124,4 +149,9 @@ def estimate_nutrition(
             "The model did not return a nutrition estimate."
         )
 
-    return estimate
+    return EstimateResult(
+        estimate=estimate,
+        provider=PROVIDER,
+        model=model,
+        prompt_version=PROMPT_VERSION,
+    )

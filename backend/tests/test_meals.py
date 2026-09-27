@@ -245,14 +245,16 @@ def test_estimate_without_api_key_returns_503_and_saves_nothing(client, monkeypa
     assert client.get("/meals/today").json() == []
 
 
-def test_slow_estimate_does_not_block_other_requests(client, monkeypatch, fake_estimate):
+def test_slow_estimate_does_not_block_other_requests(
+    client, monkeypatch, fake_estimate, fake_result
+):
     estimate_started = threading.Event()
     release_estimate = threading.Event()
 
     def slow_estimate(message, image_bytes=None, image_content_type=None):
         estimate_started.set()
         release_estimate.wait(timeout=10)
-        return fake_estimate
+        return fake_result(fake_estimate)
 
     monkeypatch.setattr(services.meals, "estimate_nutrition", slow_estimate)
 
@@ -380,12 +382,16 @@ def test_summary_excludes_meals_from_other_days(client):
     assert summary["calories_consumed"] == 650
 
 
-def test_late_evening_meal_counts_toward_that_local_day(client, monkeypatch, fake_estimate):
+def test_late_evening_meal_counts_toward_that_local_day(
+    client, monkeypatch, fake_estimate, fake_result
+):
     monkeypatch.setattr(config, "DEFAULT_TIMEZONE", "America/New_York")
     # 23:30 in New York is 03:30 UTC the next day.
     freeze_clock(monkeypatch, datetime(2026, 9, 26, 3, 30, tzinfo=timezone.utc))
     late_snack = fake_estimate.model_copy(update={"meal_name": "Late snack", "calories": 300})
-    monkeypatch.setattr(services.meals, "estimate_nutrition", lambda **kwargs: late_snack)
+    monkeypatch.setattr(
+        services.meals, "estimate_nutrition", lambda **kwargs: fake_result(late_snack)
+    )
 
     client.post("/meals/estimate", data={"message": "late snack"})
     summary = client.get("/summary/daily").json()
@@ -498,7 +504,7 @@ def test_unknown_timezone_header_is_rejected(client, method, path):
 
 
 def test_meal_keeps_the_day_it_was_submitted_when_estimation_crosses_midnight(
-    client, monkeypatch, fake_estimate
+    client, monkeypatch, fake_estimate, fake_result
 ):
     monkeypatch.setattr(config, "DEFAULT_TIMEZONE", "America/New_York")
     # 23:59:30 in New York when the request starts ...
@@ -509,7 +515,7 @@ def test_meal_keeps_the_day_it_was_submitted_when_estimation_crosses_midnight(
     def slow_estimate(**kwargs):
         # ... and 00:00:30 the next day when the AI answers.
         now[0] = datetime(2026, 9, 26, 4, 0, 30, tzinfo=timezone.utc)
-        return fake_estimate
+        return fake_result(fake_estimate)
 
     monkeypatch.setattr(services.meals, "estimate_nutrition", slow_estimate)
 
