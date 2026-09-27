@@ -1,6 +1,6 @@
 from datetime import date, datetime, timezone
 
-from sqlalchemy import CheckConstraint, Date, DateTime, Float, ForeignKey, Index, Integer, String
+from sqlalchemy import JSON, CheckConstraint, Date, DateTime, Float, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -108,6 +108,22 @@ class Meal(Base):
     # The user's calendar date when the meal was logged; decides which
     # day's totals it counts toward.
     local_date: Mapped[date] = mapped_column(Date)
+
+    # Where the meal came from. NULL on meals logged before these were
+    # recorded (Milestone 0.8): unknown, not guessed.
+    source: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # The text the user submitted, as received.
+    description: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    ai_provider: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    ai_model: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    prompt_version: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # The model's full estimate (including its assumptions), never the image.
+    ai_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     user: Mapped["User"] = relationship(
         back_populates="meals",

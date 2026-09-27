@@ -328,3 +328,67 @@ def test_local_date_migration_downgrades_and_upgrades_again(db_url):
 
     command.upgrade(alembic_cfg, "0003_meal_local_date")
     assert db_migrations.current_revision(db_url) == "0003_meal_local_date"
+
+
+PROVENANCE_COLUMNS = [
+    "source",
+    "description",
+    "ai_provider",
+    "ai_model",
+    "prompt_version",
+    "ai_payload",
+]
+
+
+def insert_dated_meal(db_url, meal_name="Eggs", local_date="2026-09-25"):
+    run_sql(
+        db_url,
+        [
+            "INSERT INTO meals (user_id, meal_name, calories, protein_g, carbohydrates_g, "
+            "fat_g, confidence, calorie_low, calorie_high, created_at, local_date) "
+            f"VALUES (1, '{meal_name}', 400, 20, 35, 20, 0.85, 350, 450, "
+            f"'{local_date} 12:00:00', '{local_date}')"
+        ],
+    )
+
+
+def meal_columns(db_url):
+    return {
+        column["name"]: column
+        for column in inspect(create_engine(db_url)).get_columns("meals")
+    }
+
+
+def test_provenance_migration_keeps_existing_meals_with_unknown_provenance(db_url):
+    alembic_cfg = db_migrations.alembic_config(db_url)
+    command.upgrade(alembic_cfg, "0003_meal_local_date")
+    insert_users_with_goals(db_url, [2633])
+    insert_dated_meal(db_url)
+
+    command.upgrade(alembic_cfg, "0004_meal_provenance")
+
+    assert rows(db_url, "SELECT id, meal_name, calories, local_date FROM meals") == [
+        (1, "Eggs", 400, "2026-09-25")
+    ]
+    assert rows(db_url, f"SELECT {', '.join(PROVENANCE_COLUMNS)} FROM meals") == [
+        (None,) * len(PROVENANCE_COLUMNS)
+    ]
+    columns = meal_columns(db_url)
+    assert all(columns[name]["nullable"] for name in PROVENANCE_COLUMNS)
+
+
+def test_provenance_migration_downgrades_and_upgrades_again(db_url):
+    alembic_cfg = db_migrations.alembic_config(db_url)
+    command.upgrade(alembic_cfg, "0004_meal_provenance")
+    insert_users_with_goals(db_url, [2633])
+    insert_dated_meal(db_url)
+    run_sql(db_url, ["UPDATE meals SET source = 'text', ai_model = 'some-model'"])
+
+    command.downgrade(alembic_cfg, "0003_meal_local_date")
+
+    assert not set(PROVENANCE_COLUMNS) & set(meal_columns(db_url))
+    assert rows(db_url, "SELECT id, meal_name FROM meals") == [(1, "Eggs")]
+
+    command.upgrade(alembic_cfg, "0004_meal_provenance")
+
+    assert rows(db_url, "SELECT source, ai_model FROM meals") == [(None, None)]
