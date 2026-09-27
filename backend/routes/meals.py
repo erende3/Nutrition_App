@@ -3,7 +3,7 @@ from datetime import date
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
@@ -14,6 +14,7 @@ from crud import (
     get_meals_by_date,
 )
 from dependencies import get_current_user, get_db, get_request_timezone
+from errors import ApiError
 from models import User
 from schemas import (
     ClearMealsResponse,
@@ -36,14 +37,14 @@ router = APIRouter(
     tags=["meals"],
 )
 
-# Status and client-facing message per failure. Exception text is logged,
-# never returned.
+# Status, code and client-facing message per failure. Exception text is
+# logged, never returned.
 ESTIMATE_ERRORS = {
-    EstimatorNotConfigured: (503, "Meal estimation is not available right now."),
-    EstimatorTimeout: (504, "Meal estimation timed out. Please try again."),
-    EstimatorFailed: (502, "Meal estimation failed. Please try again."),
+    EstimatorNotConfigured: (503, "estimation_unavailable", "Meal estimation is not available right now."),
+    EstimatorTimeout: (504, "estimation_timeout", "Meal estimation timed out. Please try again."),
+    EstimatorFailed: (502, "estimation_failed", "Meal estimation failed. Please try again."),
 }
-UNEXPECTED_ESTIMATE_ERROR = (500, "Something went wrong while logging the meal.")
+UNEXPECTED_ESTIMATE_ERROR = (500, "internal_error", "Something went wrong while logging the meal.")
 
 # Accepted image types, each with a check that the bytes really start like
 # that kind of file (the declared content type comes from the client).
@@ -83,9 +84,10 @@ async def estimate_meal(
 
     if image is not None:
         if image.content_type not in IMAGE_SIGNATURES:
-            raise HTTPException(
-                status_code=400,
-                detail="Image must be JPEG, PNG, or WebP.",
+            raise ApiError(
+                400,
+                "unsupported_image_type",
+                "Image must be JPEG, PNG, or WebP.",
             )
 
         # Read at most one byte past the limit, so an oversized upload is
@@ -93,21 +95,24 @@ async def estimate_meal(
         image_bytes = await image.read(settings.MAX_IMAGE_BYTES + 1)
 
         if not image_bytes:
-            raise HTTPException(
-                status_code=400,
-                detail="The image is empty.",
+            raise ApiError(
+                400,
+                "empty_image",
+                "The image is empty.",
             )
 
         if len(image_bytes) > settings.MAX_IMAGE_BYTES:
-            raise HTTPException(
-                status_code=413,
-                detail="The photo is too large. Please choose a smaller photo.",
+            raise ApiError(
+                413,
+                "image_too_large",
+                "The photo is too large. Please choose a smaller photo.",
             )
 
         if not IMAGE_SIGNATURES[image.content_type](image_bytes):
-            raise HTTPException(
-                status_code=400,
-                detail="The image isn't a valid JPEG, PNG, or WebP file.",
+            raise ApiError(
+                400,
+                "invalid_image",
+                "The image isn't a valid JPEG, PNG, or WebP file.",
             )
 
         image_content_type = image.content_type
@@ -127,13 +132,8 @@ async def estimate_meal(
 
     except Exception as exc:
         logger.exception("Meal estimate failed")
-        status_code, detail = ESTIMATE_ERRORS.get(
-            type(exc),
-            UNEXPECTED_ESTIMATE_ERROR,
-        )
-        raise HTTPException(
-            status_code=status_code,
-            detail=detail,
+        raise ApiError(
+            *ESTIMATE_ERRORS.get(type(exc), UNEXPECTED_ESTIMATE_ERROR)
         ) from exc
 
 @router.delete("/today")
@@ -165,10 +165,7 @@ def remove_meal(
     )
 
     if not deleted:
-        raise HTTPException(
-            status_code=404,
-            detail="Meal not found.",
-        )
+        raise ApiError(404, "meal_not_found", "Meal not found.")
 
     return DeleteMealResponse(
         message="Meal deleted.",

@@ -1,11 +1,12 @@
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import config as settings
 from database import SessionLocal
+from errors import ApiError
 from models import User
 
 
@@ -60,7 +61,8 @@ def get_request_timezone(
     try:
         return ZoneInfo(name)
     except (ZoneInfoNotFoundError, ValueError, OSError):
-        raise HTTPException(
-            status_code=400,
-            detail="X-Timezone must be an IANA timezone name, such as America/New_York.",
+        raise ApiError(
+            400,
+            "invalid_timezone",
+            "X-Timezone must be an IANA timezone name, such as America/New_York.",
         )
