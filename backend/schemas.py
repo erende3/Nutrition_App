@@ -53,6 +53,20 @@ class MealSource(str, Enum):
     photo = "photo"
 
 
+class GoalSource(str, Enum):
+    """Where a daily calorie goal came from. Stored as a plain string (new
+    sources need no migration); this is the one definition of the values the
+    app writes, enforced when a goal is set (models.DailyGoal)."""
+
+    # Calculated from the onboarding profile.
+    calculated = "calculated"
+    # The calculation gave no usable goal, so the default was used
+    # (goal_adjusted in the onboarding response).
+    default = "default"
+    # The single goal a user had before goal history (migration 0005).
+    migrated = "migrated"
+
+
 class Sex(str, Enum):
     male = "male"
     female = "female"

@@ -2,7 +2,7 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
-from crud import get_meals_by_date
+from crud import get_meals_by_date, goal_for
 from models import User
 
 
@@ -24,7 +24,7 @@ def get_daily_summary(
         for meal in meals
     )
 
-    daily_goal = user.daily_calorie_goal
+    daily_goal = goal_for(db, user, day)
 
     calories_remaining = max(
         daily_goal - calories_consumed,

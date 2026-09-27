@@ -90,6 +90,17 @@ def test_invalid_timezone_header_is_a_string_detail(client, method, path):
     assert_string_detail(response, 400)
 
 
+def test_invalid_timezone_header_on_onboarding_is_a_string_detail(client):
+    response = client.post(
+        "/users/onboarding",
+        json={"age": 30, "sex": "male", "height_cm": 175, "weight_kg": 70,
+              "activity_level": "moderately_active", "goal": "maintain"},
+        headers={"X-Timezone": "Not/AZone"},
+    )
+
+    assert_string_detail(response, 400)
+
+
 def test_invalid_timezone_header_on_estimate_is_a_string_detail(client):
     response = client.post(
         "/meals/estimate",

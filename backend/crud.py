@@ -2,8 +2,8 @@ from datetime import date, datetime
 
 from sqlalchemy.orm import Session
 
-from models import Meal, User
-from schemas import MealSource, UserOnboardingRequest
+from models import DEFAULT_DAILY_CALORIE_GOAL, DailyGoal, Meal, User
+from schemas import GoalSource, MealSource, UserOnboardingRequest
 from services.nutrition_ai import EstimateResult
 
 
@@ -29,7 +29,7 @@ def create_meal(
         calorie_high=estimate.calorie_high,
         created_at=created_at,
         local_date=local_date,
-        source=source.value,
+        source=source,
         description=description,
         ai_provider=result.provider,
         ai_model=result.model,
@@ -103,12 +103,56 @@ def delete_meal(
 
     return True
 
+def goal_for(
+    db: Session,
+    user: User,
+    day: date,
+) -> int:
+    """The user's calorie goal on a day: their latest goal effective on or
+    before it, else the default."""
+
+    calories = (
+        db.query(DailyGoal.calories)
+        .filter(
+            DailyGoal.user_id == user.id,
+            DailyGoal.effective_date <= day,
+        )
+        .order_by(DailyGoal.effective_date.desc())
+        .limit(1)
+        .scalar()
+    )
+
+    return DEFAULT_DAILY_CALORIE_GOAL if calories is None else calories
+
+
+def current_goal(
+    db: Session,
+    user: User,
+) -> int:
+    """The user's most recent goal, else the default."""
+
+    calories = (
+        db.query(DailyGoal.calories)
+        .filter(DailyGoal.user_id == user.id)
+        .order_by(DailyGoal.effective_date.desc())
+        .limit(1)
+        .scalar()
+    )
+
+    return DEFAULT_DAILY_CALORIE_GOAL if calories is None else calories
+
+
 def update_user_from_onboarding(
     db: Session,
     user: User,
     data: UserOnboardingRequest,
     daily_calorie_goal: int,
+    goal_source: GoalSource,
+    effective_date: date,
 ) -> User:
+    """Saves the profile and sets the goal from effective_date on, in one
+    commit. A second goal on the same day replaces that day's goal."""
+
     user.age = data.age
     user.sex = data.sex.value
     user.height_cm = data.height_cm
@@ -117,12 +161,32 @@ def update_user_from_onboarding(
     user.goal = data.goal.value
     user.daily_calorie_goal = daily_calorie_goal
 
+    # ponytail: read-then-write; two onboardings in the same instant for the
+    # same day would hit the unique constraint (a 500). Single user today;
+    # use INSERT ... ON CONFLICT if concurrent writers appear.
+    goal = (
+        db.query(DailyGoal)
+        .filter(
+            DailyGoal.user_id == user.id,
+            DailyGoal.effective_date == effective_date,
+        )
+        .one_or_none()
+    )
+
+    if goal is None:
+        goal = DailyGoal(user_id=user.id, effective_date=effective_date)
+        db.add(goal)
+
+    goal.calories = daily_calorie_goal
+    goal.source = goal_source
+
     db.commit()
     db.refresh(user)
 
     return user
 
 def get_user_profile(
+    db: Session,
     user: User,
 ) -> dict:
     onboarding_complete = all(
@@ -145,6 +209,6 @@ def get_user_profile(
         "weight_kg": user.weight_kg,
         "activity_level": user.activity_level,
         "goal": user.goal,
-        "daily_calorie_goal": user.daily_calorie_goal,
+        "daily_calorie_goal": current_goal(db, user),
         "onboarding_complete": onboarding_complete,
     }

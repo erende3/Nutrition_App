@@ -71,6 +71,11 @@ def test_photo_meal_records_photo_source_and_never_the_image(client, fake_estima
     assert meal.ai_payload == fake_estimate.model_dump()
 
 
+def test_a_meal_source_the_app_does_not_define_is_rejected():
+    with pytest.raises(ValueError):
+        Meal(source="voice")
+
+
 def test_description_is_stored_exactly_as_received(client):
     log_meal(client, message="  Soup,\n  then pie  ")
 

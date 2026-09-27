@@ -10,7 +10,8 @@ from sqlalchemy import func, select
 import app as app_module
 from database import SessionLocal
 from dependencies import get_current_user, get_db, get_or_create_default_user
-from models import Meal, User
+from models import DailyGoal, Meal, User
+from schemas import GoalSource
 
 
 @pytest.fixture
@@ -21,6 +22,15 @@ def as_user_2(client):
                 User(id=1, daily_calorie_goal=2200),
                 User(id=2, daily_calorie_goal=1800),
             ]
+        )
+        db.flush()
+        db.add(
+            DailyGoal(
+                user_id=2,
+                effective_date=date(2026, 9, 1),
+                calories=1800,
+                source=GoalSource.calculated,
+            )
         )
         db.commit()
 
@@ -126,9 +136,10 @@ def test_onboarding_updates_only_the_current_user(as_user_2):
 
     assert response.status_code == 200
     with SessionLocal() as db:
-        assert db.get(User, 2).daily_calorie_goal == 2556
+        assert db.get(User, 2).age == 30
         assert db.get(User, 1).age is None
-        assert db.get(User, 1).daily_calorie_goal == 2200
+        goals = db.query(DailyGoal.user_id, DailyGoal.calories).order_by(DailyGoal.id).all()
+        assert goals == [(2, 1800), (2, 2556)]
 
 
 def test_first_user_creation_race_returns_the_existing_user(monkeypatch):

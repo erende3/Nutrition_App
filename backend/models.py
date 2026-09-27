@@ -12,9 +12,10 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from database import Base
+from schemas import GoalSource, MealSource
 
 # Every user's goal before onboarding, and the fallback when the calculated
 # goal is not positive. Not a nutrition policy (Milestone 0.4, D4).
@@ -140,6 +141,10 @@ class Meal(Base):
         back_populates="meals",
     )
 
+    @validates("source")
+    def _validate_source(self, _key, value):
+        return None if value is None else MealSource(value).value
+
 class DailyGoal(Base):
     """A user's calorie goal from effective_date until their next goal."""
 
@@ -177,3 +182,7 @@ class DailyGoal(Base):
         DateTime,
         default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
     )
+
+    @validates("source")
+    def _validate_source(self, _key, value):
+        return GoalSource(value).value
