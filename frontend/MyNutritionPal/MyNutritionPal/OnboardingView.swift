@@ -50,6 +50,8 @@ struct OnboardingView: View {
                             .padding()
                     }
                     .buttonStyle(.borderedProminent)
+                    // Body Metrics can't continue with an invalid weight.
+                    .disabled(step == 2 && viewModel.weightError != nil)
                 } else if viewModel.dailyCalorieGoal == nil {
                     Button {
                         Task {
@@ -135,7 +137,7 @@ struct OnboardingView: View {
                 Stepper(
                     "\(viewModel.age) years old",
                     value: $viewModel.age,
-                    in: 13...120
+                    in: OnboardingViewModel.ageRange
                 )
                 .padding()
                 .background(cardBackground)
@@ -174,7 +176,7 @@ struct OnboardingView: View {
                         Stepper(
                             "\(viewModel.heightFeet) ft",
                             value: $viewModel.heightFeet,
-                            in: 3...8
+                            in: OnboardingViewModel.heightFeetRange
                         )
                         .padding()
                         .background(cardBackground)
@@ -189,7 +191,7 @@ struct OnboardingView: View {
                         Stepper(
                             "\(viewModel.heightInches) in",
                             value: $viewModel.heightInches,
-                            in: 0...11
+                            in: OnboardingViewModel.heightInchesRange
                         )
                         .padding()
                         .background(cardBackground)
@@ -203,24 +205,11 @@ struct OnboardingView: View {
                     .fontWeight(.semibold)
 
                 HStack {
-                    TextField(
-                        "Weight",
-                        value: $viewModel.weightLb,
-                        format: .number.precision(.fractionLength(0...1))
-                    )
-                    .onChange(of: viewModel.weightLb) { _, newValue in
-                        if newValue < 1 {
-                            viewModel.weightLb = 1
-                        }
-
-                        if newValue > 700 {
-                            viewModel.weightLb = 700
-                        }
-                    }
-                    .keyboardType(.decimalPad)
-                    .font(.title2)
-                    .fontWeight(.semibold)
-                    .multilineTextAlignment(.center)
+                    TextField("Weight", text: $viewModel.weightText)
+                        .keyboardType(.decimalPad)
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                        .multilineTextAlignment(.center)
 
                     Text("lb")
                         .foregroundStyle(.secondary)
@@ -228,6 +217,12 @@ struct OnboardingView: View {
                 .padding()
                 .background(cardBackground)
                 .clipShape(RoundedRectangle(cornerRadius: 14))
+
+                if let weightError = viewModel.weightError {
+                    Text(weightError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
             }
         }
     }

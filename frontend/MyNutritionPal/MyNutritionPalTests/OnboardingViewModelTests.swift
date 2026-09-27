@@ -9,6 +9,61 @@ import Testing
 
 private let base = URL(string: "http://Erics-Mac.local:8000")!
 
+/// Unit conversion and the input ranges (the app's existing ranges; the
+/// backend's `ios-limits` sweep test relies on them).
+@MainActor
+struct OnboardingInputTests {
+
+    @Test func heightIsConvertedToCentimeters() {
+        let model = OnboardingViewModel()
+        model.heightFeet = 5
+        model.heightInches = 9
+
+        #expect(abs(model.heightCm - 175.26) < 0.0001)
+    }
+
+    @Test func weightIsConvertedToKilograms() throws {
+        let model = OnboardingViewModel()
+        model.weightText = "165"
+
+        let kg = try #require(model.weightKg)
+        #expect(abs(kg - 74.8427) < 0.0001)
+    }
+
+    @Test(arguments: ["70", "700", "165", "165.5", " 150 "])
+    func weightInRangeIsAccepted(_ text: String) {
+        let model = OnboardingViewModel()
+        model.weightText = text
+
+        #expect(model.weightError == nil)
+        #expect(model.inputsAreValid)
+    }
+
+    @Test(arguments: ["69.9", "700.1", "0", "-5", "", "abc", "1000"])
+    func weightOutOfRangeIsRejectedVisibly(_ text: String) {
+        let model = OnboardingViewModel()
+        model.weightText = text
+
+        #expect(model.weightError == "Enter a weight between 70 and 700 lb.")
+        #expect(!model.inputsAreValid)
+        #expect(model.weightKg == nil)
+    }
+
+    @Test func rangesMatchTheControls() {
+        #expect(OnboardingViewModel.ageRange == 13...120)
+        #expect(OnboardingViewModel.heightFeetRange == 3...8)
+        #expect(OnboardingViewModel.heightInchesRange == 0...11)
+        #expect(OnboardingViewModel.weightRangeLb == 70...700)
+    }
+
+    @Test func ageOutsideTheRangeIsInvalid() {
+        let model = OnboardingViewModel()
+        model.age = 12
+
+        #expect(!model.inputsAreValid)
+    }
+}
+
 /// What the results step shows, from the onboarding response alone.
 @MainActor
 struct OnboardingResultDisplayTests {
@@ -76,6 +131,39 @@ extension StubbedNetwork {
             #expect(model.goalAdjustedNotice != nil)
             #expect(!model.showsEnergyBreakdown)
             #expect(StubURLProtocol.requests.first?.url?.path == "/users/onboarding")
+        }
+
+        /// The typed value is left as it is (not clamped) and nothing is sent.
+        @Test func invalidWeightSendsNoRequest() async {
+            let model = model()
+            model.weightText = "40"
+            StubURLProtocol.handler = { _ in (200, Data("{}".utf8)) }
+
+            await model.submitOnboarding()
+
+            #expect(StubURLProtocol.requests.isEmpty)
+            #expect(model.weightText == "40")
+            #expect(model.errorMessage == "Enter a weight between 70 and 700 lb.")
+            #expect(model.dailyCalorieGoal == nil)
+        }
+
+        @Test func validInputSendsTheConvertedValues() async throws {
+            let model = model()
+            model.heightFeet = 5
+            model.heightInches = 9
+            model.weightText = "165"
+            StubURLProtocol.handler = { _ in
+                (200, Data(#"{"bmr": 1649, "tdee": 2556, "daily_calorie_goal": 2556, "goal_adjusted": false}"#.utf8))
+            }
+
+            await model.submitOnboarding()
+
+            let request = try #require(StubURLProtocol.requests.first)
+            let body = try #require(StubURLProtocol.bodyData(of: request))
+            let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+            #expect(abs((json["height_cm"] as? Double ?? 0) - 175.26) < 0.0001)
+            #expect(abs((json["weight_kg"] as? Double ?? 0) - 74.8427) < 0.0001)
+            #expect(model.dailyCalorieGoal == 2556)
         }
 
         @Test func serverErrorIsShown() async {
