@@ -66,8 +66,12 @@ final class OnboardingViewModel: ObservableObject {
 
     /// The typed weight in pounds, or nil if it isn't a number in range.
     var weightLb: Double? {
+        // Double(String) accepts only a complete number, so "165lb" or "1 65"
+        // is rejected instead of read as 165. The locale's decimal separator
+        // (a comma in many regions) is swapped for "." first.
         let text = weightText.trimmingCharacters(in: .whitespaces)
-        guard let pounds = try? Double(text, format: .number),
+            .replacingOccurrences(of: Locale.current.decimalSeparator ?? ".", with: ".")
+        guard let pounds = Double(text),
               Self.weightRangeLb.contains(pounds)
         else {
             return nil

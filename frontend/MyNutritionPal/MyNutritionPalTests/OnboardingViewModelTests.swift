@@ -39,7 +39,9 @@ struct OnboardingInputTests {
         #expect(model.inputsAreValid)
     }
 
-    @Test(arguments: ["69.9", "700.1", "0", "-5", "", "abc", "1000"])
+    /// Includes text a paste or hardware keyboard could enter: a number with
+    /// anything else in it is rejected, not read as its leading digits.
+    @Test(arguments: ["69.9", "700.1", "0", "-5", "", "abc", "1000", "165abc", "165lb", "1 65", "1,65"])
     func weightOutOfRangeIsRejectedVisibly(_ text: String) {
         let model = OnboardingViewModel()
         model.weightText = text
