@@ -154,13 +154,16 @@ All requests go through `APIClient.swift`, to API v1. It sends the phone's timez
 
 ### Today's data and refreshing
 
-The Dashboard and History read the same shared state, `NutritionStore.swift`: today, loaded in one request (`GET /v1/days/{date}`, with the date worked out on the phone, in its timezone, at each refresh). Each screen keeps its own form, photo and error state. The store refreshes:
+The Today tab and History read the same shared state, `NutritionStore.swift`: today, loaded in one request (`GET /v1/days/{date}`, with the date worked out on the phone, in its timezone, at each refresh). Each screen keeps its own form, photo and error state. The store refreshes today:
 
 - when the tabs first appear, and whenever the app becomes active again (for example, back from Settings after switching Wi-Fi, from Control Center, or on a new day);
+- at midnight, or when the timezone changes, while the app is open;
 - when you pull to refresh on either screen, or tap Retry;
 - after a meal is logged or deleted, so both screens update together.
 
 Refreshes that overlap share one request. If a refresh fails, the data already on screen stays and a banner explains the problem, with Retry. Nothing watches the network or retries on its own; the next refresh simply uses the current network.
+
+**History by date.** History opens on today (the shared day above) and can show any earlier day: previous and next day, the date (which opens a calendar limited to today and earlier) and a Today button. A past day is loaded separately and never replaces today's data. Choosing another day clears the old day's meals at once, and only the most recent choice's answer is shown, so a day's meals never appear under another date. The chosen day stays while the app runs (including in the background); on today, History moves to the new day at midnight. Deleting a meal refetches the day it was on.
 
 ### Meal photos
 

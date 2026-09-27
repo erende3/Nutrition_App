@@ -155,7 +155,18 @@ The first part of Phase 4. Plan: `docs/superpowers/plans/2026-09-27-milestone-0.
 - **Screens restyled** with their behavior unchanged: the Dashboard, History (calories at the trailing edge; macros on one line), onboarding (the goal-adjusted notice as an info callout, with the same wording) and the root screen.
 - **Accessibility:** Dynamic Type everywhere (the stat cards and meal rows stack at accessibility sizes), VoiceOver phrases for the ring, stat cards and meals, decorative icons hidden, Reduce Motion for the ring, 44 pt minimum tap targets.
 - **Dev server:** `python app.py` now starts from a git worktree that has no `backend/.venv`.
+- **Acceptance fix (`15addf5`):** at the largest text sizes, onboarding's Activity Level became a menu with a plain text label (the picker's label overflowed its card), the height steppers stack, and each step starts scrolled to the top.
 - **Deferred:** Phase 5 screen designs (calendar History, meal detail and edit, Settings) and the navigation structure; macro display. From 0.9, the placeholder description ("Estimate this meal from the image.") that older photo meals may carry in `/v1` responses. The real database has none today, and only a pre-0.9 app build using the unversioned estimate route can create one. It gets fixed when those routes are removed or when a meal's description is first shown (Phase 5), whichever comes first, by mapping it at read time; stored meals are never rewritten.
+
+## Milestone 0.11: History by date (added 2026-09-27)
+
+The Phase 4 navigation decision and Phase 5 screen placement, and the first Phase 5 feature that needs no open product decision. Plan: `docs/superpowers/plans/2026-09-27-milestone-0.11-history-by-date.md`. iOS only. No backend, API, schema or data change.
+
+- **Navigation:** two tabs, **Today** (was Dashboard; sun icon) and **History** (calendar icon). No Settings tab until Settings exists; where Settings goes (a gear on Today or a third tab) is decided when Settings is designed. Meal detail/edit and macro progress were placed in wireframes only.
+- **History by date:** previous and next day, the date opening the native graphical `DatePicker` (up to today), and a Today button shown only on a past day. No future dates, no swipe between days, no calendar markers (they would need a date-range endpoint). Each day shows the Consumed / Remaining / Goal cards with the goal in effect that day, its meals with swipe to delete (no confirmation, as on today), and its own loading, empty ("No Meals — Nothing was logged on …") and error states. No day-level macro summary.
+- **State:** today stays the one shared day the Today tab and History read. A past day is held beside it and never replaces it. Choosing a day clears the old day's data at once; only the latest choice's answer is used; a failed refresh keeps a loaded day, a failed first load shows only the error. Deleting a meal refetches the day it was on (`Meal.local_date`). The chosen day stays while the app runs; on today, History follows midnight and timezone changes (the app now refreshes today on `significantTimeChangeNotification`).
+- **Accessibility:** VoiceOver reads the date as an adjustable element and hears the new date after Previous, Next, Today or the calendar; Next is dimmed on today. At accessibility sizes the date takes its own row and the day buttons are 64 pt.
+- **Deferred:** meal detail and edit, Settings and its placement, macro targets and progress, the calorie-goal bounds, the placeholder-description mapping, removing the unversioned routes.
 
 ## Phase 1: Backend correctness
 
@@ -284,13 +295,13 @@ The first part of Phase 4. Plan: `docs/superpowers/plans/2026-09-27-milestone-0.
 
 **Not yet:** building the new features, or animation polish beyond the core components.
 
-**Done when:** every component has a SwiftUI preview; existing screens use the components; the existing screens pass an accessibility check. *Milestone 0.10 did the tokens, the shared components and the restyle of the existing screens, with the accessibility baseline. The screen designs for the Phase 5 screens remain.*
+**Done when:** every component has a SwiftUI preview; existing screens use the components; the existing screens pass an accessibility check. *Milestone 0.10 did the tokens, the shared components and the restyle of the existing screens, with the accessibility baseline. Milestone 0.11 settled the tab structure (Today / History) and designed History by date; the detail/edit, Settings and macro screens were only placed, and get designed with their features.*
 
 ## Phase 5: Core tracking features
 
 **Accomplish**
 - Meal edit (`PATCH /v1/meals/{id}` for name, calories, macros, date and time) and delete for any day. Totals update because they're calculated when read.
-- History: a calendar or date navigator showing each day's meals and totals, with edit and delete.
+- History: a calendar or date navigator showing each day's meals and totals, with edit and delete. *Milestone 0.11: the date navigator, totals and delete; edit comes with meal editing.*
 - Dashboard: macro totals and progress against targets.
 - Macro targets: a default split derived from the calorie goal and stored in the goal row.
 - Settings: editing the profile adds a recalculated goal row effective from today; a manual goal override is stored with `source=manual`.
