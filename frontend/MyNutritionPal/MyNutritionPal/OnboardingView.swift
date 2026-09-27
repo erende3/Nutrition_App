@@ -6,6 +6,7 @@ struct OnboardingView: View {
     @StateObject private var viewModel = OnboardingViewModel()
     @State private var step = 0
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var scrollPosition = ScrollPosition(edge: .top)
     @ScaledMetric(relativeTo: .largeTitle) private var welcomeIconSize: CGFloat = 72
     @ScaledMetric(relativeTo: .largeTitle) private var goalNumberSize: CGFloat = 56
 
@@ -92,7 +93,13 @@ struct OnboardingView: View {
                     .padding(24)
                     .frame(minHeight: geometry.size.height)
                 }
+                .scrollPosition($scrollPosition)
                 .scrollBounceBehavior(.basedOnSize)
+                // Each step starts at the top, even if the last one was
+                // scrolled (e.g. to keep the weight field above the keyboard).
+                .onChange(of: step) {
+                    scrollPosition.scrollTo(edge: .top)
+                }
             }
         }
         .foregroundStyle(.textPrimary)
@@ -171,7 +178,13 @@ struct OnboardingView: View {
                 Text("Height")
                     .fontWeight(.semibold)
 
-                HStack(spacing: 12) {
+                // Stacked at accessibility text sizes, so each stepper's
+                // label has room.
+                let heightLayout = dynamicTypeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(spacing: 12))
+                    : AnyLayout(HStackLayout(spacing: 12))
+
+                heightLayout {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Feet")
                             .font(.caption)
@@ -236,19 +249,35 @@ struct OnboardingView: View {
                 Text("Activity Level")
                     .fontWeight(.semibold)
 
-                Picker(
-                    "Activity Level",
-                    selection: $viewModel.activityLevel
-                ) {
-                    Text("Sedentary").tag("sedentary")
-                    Text("Lightly Active").tag("lightly_active")
-                    Text("Moderately Active").tag("moderately_active")
-                    Text("Very Active").tag("very_active")
-                    Text("Extremely Active").tag("extremely_active")
+                // The same picker inside a menu, with our own label: the
+                // system menu picker's label spills out of its card when it
+                // wraps at large text sizes, while a Text grows with it.
+                Menu {
+                    Picker(
+                        "Activity Level",
+                        selection: $viewModel.activityLevel
+                    ) {
+                        ForEach(Self.activityLevels, id: \.tag) { level in
+                            Text(level.title).tag(level.tag)
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(Self.activityLevelTitle(viewModel.activityLevel))
+                            .multilineTextAlignment(.leading)
+
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.footnote)
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundStyle(Color.accentColor)
+                    // The whole card opens the menu.
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
-                .pickerStyle(.menu)
-                .padding()
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel("Activity Level")
+                .accessibilityValue(Self.activityLevelTitle(viewModel.activityLevel))
                 .cardSurface()
             }
 
@@ -338,6 +367,20 @@ struct OnboardingView: View {
                 .foregroundStyle(.textSecondary)
             }
         }
+    }
+
+    /// The activity levels offered, in order: the value sent to the server
+    /// and the name shown.
+    static let activityLevels: [(tag: String, title: String)] = [
+        ("sedentary", "Sedentary"),
+        ("lightly_active", "Lightly Active"),
+        ("moderately_active", "Moderately Active"),
+        ("very_active", "Very Active"),
+        ("extremely_active", "Extremely Active"),
+    ]
+
+    static func activityLevelTitle(_ tag: String) -> String {
+        activityLevels.first { $0.tag == tag }?.title ?? tag
     }
 
     private func resultCard(

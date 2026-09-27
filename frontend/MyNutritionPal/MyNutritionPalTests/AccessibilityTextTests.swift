@@ -47,3 +47,26 @@ struct MealRowAccessibilityTests {
         )
     }
 }
+
+/// The onboarding activity-level menu: the same options, in the same order,
+/// and the chosen one's name as its label (and VoiceOver value).
+struct ActivityLevelMenuTests {
+
+    @Test func offersTheSameLevelsInOrder() {
+        #expect(OnboardingView.activityLevels.map(\.tag) == [
+            "sedentary", "lightly_active", "moderately_active", "very_active", "extremely_active",
+        ])
+        #expect(OnboardingView.activityLevels.map(\.title) == [
+            "Sedentary", "Lightly Active", "Moderately Active", "Very Active", "Extremely Active",
+        ])
+    }
+
+    @Test func labelNamesTheChosenLevel() {
+        #expect(OnboardingView.activityLevelTitle("moderately_active") == "Moderately Active")
+        #expect(OnboardingView.activityLevelTitle("sedentary") == "Sedentary")
+    }
+
+    @MainActor @Test func theDefaultLevelIsOffered() {
+        #expect(OnboardingView.activityLevels.contains { $0.tag == OnboardingViewModel().activityLevel })
+    }
+}
