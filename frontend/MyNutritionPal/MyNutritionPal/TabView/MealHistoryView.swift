@@ -170,7 +170,13 @@ struct MealHistoryView: View {
         Button {
             showingDatePicker = true
         } label: {
-            HStack(spacing: 8) {
+            // At accessibility sizes the icon goes above the date, so the
+            // date gets the whole width.
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(alignment: .leading, spacing: 4))
+                : AnyLayout(HStackLayout(spacing: 8))
+
+            layout {
                 Image(systemName: "calendar")
                     .foregroundStyle(Color.accentColor)
 
