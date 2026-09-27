@@ -159,7 +159,6 @@ def update_user_from_onboarding(
     user.weight_kg = data.weight_kg
     user.activity_level = data.activity_level.value
     user.goal = data.goal.value
-    user.daily_calorie_goal = daily_calorie_goal
 
     # ponytail: read-then-write; two onboardings in the same instant for the
     # same day would hit the unique constraint (a 500). Single user today;

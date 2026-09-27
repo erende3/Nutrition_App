@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 import config as settings
 from database import SessionLocal
-from models import DEFAULT_DAILY_CALORIE_GOAL, User
+from models import User
 
 
 def get_db():
@@ -22,10 +22,7 @@ def get_or_create_default_user(db: Session) -> User:
     user = db.get(User, 1)
 
     if user is None:
-        user = User(
-            id=1,
-            daily_calorie_goal=DEFAULT_DAILY_CALORIE_GOAL,
-        )
+        user = User(id=1)
 
         db.add(user)
 

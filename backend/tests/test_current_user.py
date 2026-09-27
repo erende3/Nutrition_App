@@ -19,8 +19,8 @@ def as_user_2(client):
     with SessionLocal() as db:
         db.add_all(
             [
-                User(id=1, daily_calorie_goal=2200),
-                User(id=2, daily_calorie_goal=1800),
+                User(id=1),
+                User(id=2),
             ]
         )
         db.flush()
@@ -152,7 +152,7 @@ def test_first_user_creation_race_returns_the_existing_user(monkeypatch):
                 missed.append(True)
                 # Another request creates user 1 between our read and our insert.
                 with SessionLocal() as other:
-                    other.add(User(id=1, daily_calorie_goal=2200))
+                    other.add(User(id=1))
                     other.commit()
                 return None
             return real_get(*args, **kwargs)

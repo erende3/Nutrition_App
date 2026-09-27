@@ -100,7 +100,10 @@ def test_onboarding_with_non_positive_formula_goal_stores_the_default(client):
 @pytest.mark.parametrize("goal", [0, -1])
 def test_database_rejects_a_non_positive_goal(goal):
     with SessionLocal() as db:
-        db.add(User(id=5, daily_calorie_goal=goal))
+        db.add(User(id=5))
+        db.flush()
+        db.add(DailyGoal(user_id=5, effective_date=date(2026, 9, 26), calories=goal,
+                         source="calculated"))
         with pytest.raises(IntegrityError):
             db.commit()
 

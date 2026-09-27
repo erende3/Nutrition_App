@@ -171,7 +171,9 @@ def test_stamped_database_upgrades_to_head_and_keeps_its_rows(db_url):
     db_migrations.upgrade_to_head(db_url)
 
     assert db_migrations.current_revision(db_url) == head()
-    assert rows(db_url, "SELECT id, daily_calorie_goal FROM users") == [(1, 2633)]
+    assert rows(db_url, "SELECT user_id, calories, source FROM daily_goals") == [
+        (1, 2633, "migrated")
+    ]
     assert rows(db_url, "SELECT id, meal_name, calories FROM meals") == [(1, "Eggs", 400)]
 
 
@@ -467,3 +469,70 @@ def test_goal_history_migration_downgrades_and_upgrades_again(db_url):
     command.upgrade(alembic_cfg, "0005_daily_goals")
 
     assert rows(db_url, GOAL_ROWS) == [(1, "2026-09-05", 2633, "migrated")]
+
+
+def user_columns(db_url):
+    return {column["name"] for column in inspect(create_engine(db_url)).get_columns("users")}
+
+
+def test_dropping_the_user_goal_column_keeps_users_meals_and_goals(db_url):
+    alembic_cfg = db_migrations.alembic_config(db_url)
+    command.upgrade(alembic_cfg, "0005_daily_goals")
+    insert_users_with_goals(db_url, [2633])
+    run_sql(db_url, ["UPDATE users SET age = 30, sex = 'male' WHERE id = 1"])
+    insert_dated_meal(db_url, local_date="2026-09-01")
+    command.downgrade(alembic_cfg, "0004_meal_provenance")
+    command.upgrade(alembic_cfg, "0005_daily_goals")
+
+    command.upgrade(alembic_cfg, "0006_drop_user_goal_column")
+
+    assert "daily_calorie_goal" not in user_columns(db_url)
+    assert rows(db_url, "SELECT id, age, sex FROM users") == [(1, 30, "male")]
+    assert rows(db_url, "SELECT id, user_id, meal_name, local_date FROM meals") == [
+        (1, 1, "Eggs", "2026-09-01")
+    ]
+    assert rows(db_url, GOAL_ROWS) == [(1, "2026-09-01", 2633, "migrated")]
+
+
+def test_restoring_the_user_goal_column_uses_the_latest_goal(db_url):
+    alembic_cfg = db_migrations.alembic_config(db_url)
+    command.upgrade(alembic_cfg, "0006_drop_user_goal_column")
+    run_sql(
+        db_url,
+        [
+            "INSERT INTO users (id) VALUES (1), (2)",
+            "INSERT INTO daily_goals (user_id, effective_date, calories, source, created_at) "
+            "VALUES (1, '2026-09-26', 2856, 'calculated', '2026-09-26 12:00:00'), "
+            "(1, '2026-09-01', 2633, 'migrated', '2026-09-01 12:00:00')",
+        ],
+    )
+
+    command.downgrade(alembic_cfg, "0005_daily_goals")
+
+    # User 2 never had a goal: the default.
+    assert rows(db_url, "SELECT id, daily_calorie_goal FROM users ORDER BY id") == [
+        (1, 2856),
+        (2, 2200),
+    ]
+    with pytest.raises(IntegrityError):
+        run_sql(db_url, ["UPDATE users SET daily_calorie_goal = 0 WHERE id = 1"])
+
+
+def test_full_round_trip_keeps_meals_and_the_current_goal(db_url):
+    alembic_cfg = db_migrations.alembic_config(db_url)
+    command.upgrade(alembic_cfg, "0003_meal_local_date")
+    insert_users_with_goals(db_url, [2633])
+    insert_dated_meal(db_url, local_date="2026-09-01")
+    insert_dated_meal(db_url, meal_name="Soup", local_date="2026-09-25")
+    before = rows(db_url, "SELECT * FROM meals ORDER BY id")
+
+    command.upgrade(alembic_cfg, "head")
+    command.downgrade(alembic_cfg, "0003_meal_local_date")
+
+    assert rows(db_url, "SELECT * FROM meals ORDER BY id") == before
+    assert rows(db_url, "SELECT id, daily_calorie_goal FROM users") == [(1, 2633)]
+
+    command.upgrade(alembic_cfg, "head")
+
+    assert db_migrations.current_revision(db_url) == head()
+    assert rows(db_url, GOAL_ROWS) == [(1, "2026-09-01", 2633, "migrated")]

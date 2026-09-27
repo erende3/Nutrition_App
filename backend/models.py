@@ -17,19 +17,14 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 from database import Base
 from schemas import GoalSource, MealSource
 
-# Every user's goal before onboarding, and the fallback when the calculated
-# goal is not positive. Not a nutrition policy (Milestone 0.4, D4).
+# The goal of a user with no goal history (before onboarding), and the
+# fallback when the calculated goal is not positive. Not a nutrition policy
+# (Milestone 0.4, D4).
 DEFAULT_DAILY_CALORIE_GOAL = 2200
 
 
 class User(Base):
     __tablename__ = "users"
-    __table_args__ = (
-        CheckConstraint(
-            "daily_calorie_goal > 0",
-            name="ck_users_daily_calorie_goal_positive",
-        ),
-    )
 
     id: Mapped[int] = mapped_column(
         Integer,
@@ -65,11 +60,6 @@ class User(Base):
     goal: Mapped[str | None] = mapped_column(
         String,
         nullable=True,
-    )
-
-    daily_calorie_goal: Mapped[int] = mapped_column(
-        Integer,
-        default=DEFAULT_DAILY_CALORIE_GOAL,
     )
 
     meals: Mapped[list["Meal"]] = relationship(
