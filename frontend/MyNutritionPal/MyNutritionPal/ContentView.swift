@@ -525,12 +525,12 @@ struct ContentView: View {
         TabView {
             DashboardView()
                 .tabItem {
-                    Label("Dashboard", systemImage: "house.fill")
+                    Label("Today", systemImage: "sun.max.fill")
                 }
 
             MealHistoryView()
                 .tabItem {
-                    Label("History", systemImage: "clock.fill")
+                    Label("History", systemImage: "calendar")
                 }
         }
         .task {
@@ -543,6 +543,11 @@ struct ContentView: View {
             if phase == .active {
                 Task { await store.refresh() }
             }
+        }
+        // Midnight or a timezone change while the app is open: today is a
+        // new day, on the Today tab and in History showing today.
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification)) { _ in
+            Task { await store.refresh() }
         }
     }
 }

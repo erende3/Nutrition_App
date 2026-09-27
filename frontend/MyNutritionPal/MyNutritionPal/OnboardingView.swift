@@ -80,7 +80,7 @@ struct OnboardingView: View {
                         Button {
                             onComplete()
                         } label: {
-                            Text("Continue to Dashboard")
+                            Text("Continue to Today")
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(PrimaryButtonStyle())
