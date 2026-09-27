@@ -9,9 +9,12 @@ import SwiftUI
 
 @main
 struct MyNutritionPalApp: App {
+    @State private var store = NutritionStore()
+
     var body: some Scene {
         WindowGroup {
             RootView()
+                .environment(store)
         }
     }
 }

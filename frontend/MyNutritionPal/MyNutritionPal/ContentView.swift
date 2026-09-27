@@ -9,15 +9,14 @@ private struct PreparedPhoto {
 }
 
 struct DashboardView: View {
+    @Environment(NutritionStore.self) private var store
+
     @State private var mealText = ""
     @State private var lastResult: NutritionEstimate?
 
-    @State private var dailyGoal = 2200
-    @State private var caloriesConsumed = 0
-    @State private var caloriesRemaining = 2200
-
     @State private var isLoading = false
-    @State private var errorMessage: String?
+    @State private var estimateError: String?
+    @State private var photoError: String?
     @State private var photo: PreparedPhoto?
     @State private var cameraImage: UIImage?
     @State private var isPreparingPhoto = false
@@ -38,10 +37,18 @@ struct DashboardView: View {
                 VStack(alignment: .leading, spacing: 28) {
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("TODAY")
-                            .font(.caption)
-                            .fontWeight(.bold)
-                            .foregroundStyle(.gray)
+                        HStack(spacing: 6) {
+                            Text("TODAY")
+                                .font(.caption)
+                                .fontWeight(.bold)
+                                .foregroundStyle(.gray)
+
+                            // Only before the first load; later refreshes keep the numbers.
+                            if store.summary == nil && store.isRefreshing {
+                                ProgressView()
+                                    .controlSize(.mini)
+                            }
+                        }
 
                         Text("Nutrition")
                             .font(.system(size: 36, weight: .bold))
@@ -56,25 +63,36 @@ struct DashboardView: View {
                             }
                         }
                     }
+
+                    if let loadError = store.loadError {
+                        LoadErrorBanner(
+                            title: "Couldn't update today's totals.",
+                            message: loadError,
+                            isRetrying: store.isRefreshing
+                        ) {
+                            Task { await store.refresh() }
+                        }
+                    }
+
                     CalorieRing(
-                        consumed: Double(caloriesConsumed),
-                        goal: Double(dailyGoal)
+                        consumed: store.summary?.calories_consumed,
+                        goal: store.summary?.daily_goal
                     )
 
                     HStack(spacing: 12) {
                         StatCard(
                             title: "Consumed",
-                            value: "\(caloriesConsumed)"
+                            value: Self.number(store.summary?.calories_consumed)
                         )
 
                         StatCard(
                             title: "Remaining",
-                            value: "\(caloriesRemaining)"
+                            value: Self.number(store.summary?.calories_remaining)
                         )
 
                         StatCard(
                             title: "Goal",
-                            value: "\(dailyGoal)"
+                            value: Self.number(store.summary?.daily_goal)
                         )
                     }
 
@@ -145,6 +163,7 @@ struct DashboardView: View {
                                     
                                     Button("Remove") {
                                         self.photo = nil
+                                        photoError = nil
                                     }
                                     .font(.subheadline)
                                 }
@@ -208,6 +227,16 @@ struct DashboardView: View {
                                 return UIImage(data: data)
                             }
                         }
+
+                        if let photoError {
+                            Text(photoError)
+                                .foregroundStyle(.red)
+                        }
+
+                        if let estimateError {
+                            Text(estimateError)
+                                .foregroundStyle(.red)
+                        }
                     }
 
                     if let lastResult {
@@ -244,20 +273,20 @@ struct DashboardView: View {
                         )
                     }
 
-                    if let errorMessage {
-                        Text(errorMessage)
-                            .foregroundStyle(.red)
-                    }
-
                     Spacer(minLength: 30)
                 }
                 .padding()
             }
+            .refreshable {
+                await store.refresh()
+            }
         }
         .preferredColorScheme(.dark)
-        .task {
-            await refreshDailySummary()
-        }
+    }
+
+    /// A number from the summary, or a dash before there is one.
+    private static func number(_ value: Int?) -> String {
+        value.map(String.init) ?? "–"
     }
 
     private func estimateMeal() {
@@ -274,11 +303,11 @@ struct DashboardView: View {
         let submittedPhotoGeneration = photoGeneration
 
         isLoading = true
-        errorMessage = nil
+        estimateError = nil
 
         Task {
             do {
-                let result = try await APIClient.shared.estimateMeal(
+                let result = try await store.logMeal(
                     message: submittedMeal.isEmpty
                         ? "Estimate this meal from the image."
                         : submittedMeal,
@@ -290,12 +319,10 @@ struct DashboardView: View {
                 // Keep a photo picked while this estimate was running.
                 if photoGeneration == submittedPhotoGeneration {
                     photo = nil
+                    photoError = nil
                 }
-
-                await refreshDailySummary()
-
             } catch {
-                errorMessage = error.localizedDescription
+                estimateError = error.localizedDescription
             }
 
             isLoading = false
@@ -322,7 +349,7 @@ struct DashboardView: View {
         photoGeneration += 1
         let generation = photoGeneration
         isPreparingPhoto = true
-        errorMessage = nil
+        photoError = nil
 
         Task {
             var prepared: PreparedPhoto?
@@ -345,42 +372,32 @@ struct DashboardView: View {
             if let prepared {
                 photo = prepared
             } else {
-                errorMessage = failure
+                photoError = failure
             }
-        }
-    }
-
-    private func refreshDailySummary() async {
-        do {
-            let summary = try await APIClient.shared
-                .getDailySummary()
-
-            dailyGoal = summary.daily_goal
-            caloriesConsumed = summary.calories_consumed
-            caloriesRemaining = summary.calories_remaining
-            errorMessage = nil
-
-        } catch {
-            errorMessage = error.localizedDescription
         }
     }
 }
 
 
 struct CalorieRing: View {
-    let consumed: Double
-    let goal: Double
+    /// nil before today's summary has loaded: the ring is empty and shows a dash.
+    let consumed: Int?
+    let goal: Int?
 
     var progress: Double {
-        guard goal > 0 else {
+        guard let consumed, let goal, goal > 0 else {
             return 0
         }
 
-        return min(consumed / goal, 1)
+        return min(Double(consumed) / Double(goal), 1)
     }
 
-    var remaining: Int {
-        max(Int(goal - consumed), 0)
+    var remaining: String {
+        guard let consumed, let goal else {
+            return "–"
+        }
+
+        return "\(max(goal - consumed, 0))"
     }
 
     var body: some View {
@@ -410,7 +427,7 @@ struct CalorieRing: View {
                 )
 
             VStack(spacing: 4) {
-                Text("\(remaining)")
+                Text(remaining)
                     .font(
                         .system(
                             size: 46,
@@ -457,7 +474,49 @@ struct StatCard: View {
 }
 
 
+/// Why today's data couldn't be refreshed, with a Retry. Shown above
+/// whatever data is already on screen, which stays visible.
+struct LoadErrorBanner: View {
+    let title: String
+    let message: String
+    let isRetrying: Bool
+    let retry: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.subheadline)
+                .fontWeight(.semibold)
+
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Button {
+                retry()
+            } label: {
+                if isRetrying {
+                    ProgressView()
+                } else {
+                    Text("Retry")
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isRetrying)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(Color.red.opacity(0.15))
+        .clipShape(
+            RoundedRectangle(cornerRadius: 14)
+        )
+    }
+}
+
+
 struct ContentView: View {
+    @Environment(NutritionStore.self) private var store
+
     var body: some View {
         TabView {
             DashboardView()
@@ -469,6 +528,9 @@ struct ContentView: View {
                 .tabItem {
                     Label("History", systemImage: "clock.fill")
                 }
+        }
+        .task {
+            await store.refresh()
         }
     }
 }
