@@ -1,6 +1,4 @@
-from datetime import date, datetime, time, timedelta
-
-from datetime import timezone
+from datetime import date, datetime, time, timedelta, timezone
 
 import services.summary
 from database import SessionLocal
@@ -103,13 +101,15 @@ def test_changing_the_goal_today_leaves_yesterday_unchanged(client, monkeypatch)
     yesterday, today = date(2026, 9, 25), date(2026, 9, 26)
 
     monkeypatch.setattr(clock, "utc_now", lambda: datetime(2026, 9, 25, 12, tzinfo=timezone.utc))
-    client.post("/users/onboarding", json=profile, headers={"X-Timezone": "UTC"})
+    first = client.post("/users/onboarding", json=profile, headers={"X-Timezone": "UTC"})
     monkeypatch.setattr(clock, "utc_now", lambda: datetime(2026, 9, 26, 12, tzinfo=timezone.utc))
-    client.post(
+    second = client.post(
         "/users/onboarding",
         json={**profile, "goal": "gain_weight"},
         headers={"X-Timezone": "UTC"},
     )
+
+    assert (first.status_code, second.status_code) == (200, 200)
 
     assert summary_goals([yesterday, today]) == [2556, 2856]
     assert client.get("/summary/daily", headers={"X-Timezone": "UTC"}).json()["daily_goal"] == 2856

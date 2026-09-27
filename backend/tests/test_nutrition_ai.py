@@ -96,7 +96,8 @@ def test_recorded_model_follows_config(fake_openai, monkeypatch):
 
 # The prompt, instructions and output schema each prompt version was made of.
 # Changing any of them changes the hash: bump PROMPT_VERSION in
-# services/nutrition_ai.py, then add the new version and hash here.
+# services/nutrition_ai.py, then add the new version and hash here. Never
+# edit an existing entry: meals already record that version.
 PROMPT_HASHES = {
     "1": "ac64dc3a2289e768575966c1bcfebc08c85d4daf0fc1e493dc2c0750219e70f9",
 }
