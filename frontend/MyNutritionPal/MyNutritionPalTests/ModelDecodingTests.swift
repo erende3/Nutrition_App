@@ -63,12 +63,31 @@ struct ModelDecodingTests {
         #expect(estimate.assumptions == ["1 cup rice"])
     }
 
-    @Test func onboardingResultIgnoresGoalAdjusted() throws {
+    @Test func onboardingResultDecodesGoalAdjusted() throws {
         let result = try decode(OnboardingResult.self, """
         {"bmr": -779, "tdee": -935, "daily_calorie_goal": 2200, "goal_adjusted": true}
         """)
 
         #expect(result.dailyCalorieGoal == 2200)
         #expect(result.bmr == -779)
+        #expect(result.goalAdjusted)
+    }
+
+    @Test func onboardingResultWithGoalAsCalculated() throws {
+        let result = try decode(OnboardingResult.self, """
+        {"bmr": 1649, "tdee": 2556, "daily_calorie_goal": 2556, "goal_adjusted": false}
+        """)
+
+        #expect(!result.goalAdjusted)
+    }
+
+    /// A server from before goal_adjusted existed still works.
+    @Test func missingGoalAdjustedDecodesAsFalse() throws {
+        let result = try decode(OnboardingResult.self, """
+        {"bmr": 1649, "tdee": 2556, "daily_calorie_goal": 2556}
+        """)
+
+        #expect(!result.goalAdjusted)
+        #expect(result.dailyCalorieGoal == 2556)
     }
 }

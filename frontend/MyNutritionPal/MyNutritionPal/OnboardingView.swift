@@ -291,7 +291,15 @@ struct OnboardingView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                if let bmr = viewModel.bmr,
+                if let notice = viewModel.goalAdjustedNotice {
+                    Text(notice)
+                        .font(.footnote)
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                }
+
+                if viewModel.showsEnergyBreakdown,
+                   let bmr = viewModel.bmr,
                    let tdee = viewModel.tdee {
                     HStack(spacing: 12) {
                         resultCard(
