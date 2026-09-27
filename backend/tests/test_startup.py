@@ -6,6 +6,8 @@ import sys
 import warnings
 from pathlib import Path
 
+import pytest
+
 import app as app_module
 
 BACKEND = Path(__file__).resolve().parent.parent
@@ -81,3 +83,23 @@ def test_database_url_can_be_set_in_dotenv(tmp_path):
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip().splitlines()[-1] == dotenv_url
+
+
+@pytest.mark.parametrize("has_venv", [True, False])
+def test_main_excludes_venv_from_reload_only_when_it_exists(tmp_path, monkeypatch, has_venv):
+    # A git worktree has no backend/.venv (it runs the main checkout's), and
+    # uvicorn rejects an absolute exclude path that doesn't exist.
+    import db_migrations
+    import uvicorn
+
+    venv = tmp_path / ".venv"
+    if has_venv:
+        venv.mkdir()
+    monkeypatch.setattr(app_module, "__file__", str(tmp_path / "app.py"))
+    monkeypatch.setattr(db_migrations, "upgrade_to_head", lambda: None)
+    calls = []
+    monkeypatch.setattr(uvicorn, "run", lambda *args, **kwargs: calls.append(kwargs))
+
+    app_module.main()
+
+    assert calls[0]["reload_excludes"] == ([str(venv)] if has_venv else [])

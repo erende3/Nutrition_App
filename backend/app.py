@@ -56,14 +56,18 @@ def main() -> None:
         )
         raise SystemExit(1) from exc
 
+    venv = Path(__file__).resolve().parent / ".venv"
+
     uvicorn.run(
         "app:app",
         host="0.0.0.0",
         port=8000,
         reload=True,
         # Must be absolute: uvicorn matches excluded directories against
-        # absolute paths. Needs watchfiles (requirements-dev.txt).
-        reload_excludes=[str(Path(__file__).resolve().parent / ".venv")],
+        # absolute paths. Needs watchfiles (requirements-dev.txt). Only if it
+        # exists: uvicorn rejects a missing absolute path, and a git worktree
+        # has no .venv of its own.
+        reload_excludes=[str(venv)] if venv.is_dir() else [],
     )
 
 
