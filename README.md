@@ -60,7 +60,7 @@ All settings are read in `backend/config.py`.
 
 **Days and timezones.** Each meal stores `local_date`, the user's calendar date when it was logged. Today's meals, clearing today and the daily summary use the date in the request's timezone: the optional `X-Timezone` header (an IANA name) or `DEFAULT_TIMEZONE`. An unknown `X-Timezone` returns 400. The iOS app sends the phone's timezone on every request, so "today" is the phone's day; `DEFAULT_TIMEZONE` applies to clients that don't send the header.
 
-**Calorie goals.** A stored goal is always positive. If the calculation gives 0 or less (only possible for extreme inputs), onboarding stores the default goal (2200) and returns `goal_adjusted: true`. There are no minimum or maximum goal policies yet.
+**Calorie goals.** A stored goal is always positive. If the calculation gives 0 or less (only possible for extreme inputs), onboarding stores the default goal (2200) and returns `goal_adjusted: true`, and the iOS app then says the default goal was used. There are no minimum or maximum goal policies yet: a positive goal is kept even when it's implausibly low (inputs the app accepts can give goals down to 1 kcal). That policy is an open product decision, due before the goal and macro features.
 
 When an estimate fails, the API returns 503 (estimator not configured, e.g. no API key), 504 (the AI provider timed out), 502 (the AI provider failed) or 500 (anything else), with a generic `detail` message. The underlying error is logged by the server, never returned to the client.
 
@@ -94,11 +94,25 @@ API_BASE_URL = http:/$()/Erics-MacBook-Pro.local:8000
 
 ### How the app calls the backend
 
-All requests go through `APIClient.swift`. It sends the phone's timezone in `X-Timezone`, waits up to 300 s for a meal estimate and 20 s for anything else, and never retries on its own (an estimate saves the meal, so a retry could log it twice). Failures show the backend's `detail` message, or say which server couldn't be reached; the profile and History screens have a Retry button.
+All requests go through `APIClient.swift`. It sends the phone's timezone in `X-Timezone`, waits up to 300 s for a meal estimate and 20 s for anything else, and never retries on its own (an estimate saves the meal, so a retry could log it twice). Failures show the backend's `detail` message, or say which server couldn't be reached. A cancelled request (for example, when you leave a screen mid-load) isn't shown as an error.
+
+### Today's data and refreshing
+
+The Dashboard and History read the same shared state, `NutritionStore.swift`: today's summary and meals, loaded together. Each screen keeps its own form, photo and error state. The store refreshes:
+
+- when the tabs first appear, and whenever the app becomes active again (for example, back from Settings after switching Wi-Fi, from Control Center, or on a new day);
+- when you pull to refresh on either screen, or tap Retry;
+- after a meal is logged or deleted, so both screens update together.
+
+Refreshes that overlap share one request. If a refresh fails, the data already on screen stays and a banner explains the problem, with Retry. Nothing watches the network or retries on its own; the next refresh simply uses the current network.
 
 ### Meal photos
 
-**Take Photo** uses the camera and appears only when the device has a usable one. **Choose Photo** picks from the photo library (`PhotosPicker`, which needs no photo-library permission). Either way, the app prepares the photo in the background as soon as it's picked (`MealPhoto.swift`): at most 1536 px on the long edge, upright, JPEG at quality 0.7, and without the original's metadata, so no location is sent. A typical phone photo uploads at a few hundred KB.
+**Take Photo** uses the camera and appears only when the device has a usable one. **Choose Photo** picks from the photo library (`PhotosPicker`, which needs no photo-library permission). Either way, the app prepares the photo in the background as soon as it's picked (`MealPhoto.swift`): at most 1536 px on the long edge, upright, JPEG at quality 0.7, and without the original's metadata, so no location is sent. A typical phone photo uploads at a few hundred KB. While a photo is being prepared (a library photo may first download from iCloud), **Cancel** stops waiting for it and keeps any photo picked earlier.
+
+### Onboarding
+
+Onboarding accepts ages 13–120, heights 3'0"–8'11" and weights 70–700 lb. A weight outside that range, or one that isn't a number, is explained on the screen and blocks Continue; it's never changed silently. These are the app's input limits, not nutrition advice.
 
 ### Tests
 
@@ -109,4 +123,4 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test \
   -only-testing:MyNutritionPalTests API_BASE_URL=
 ```
 
-Use a simulator with iOS 18.5 or later. The unit tests use a stubbed network. Xcode launches the app itself as the test host, though, and the app makes its usual launch requests (reading the profile and today's summary) to the configured server. `API_BASE_URL=` on the command line leaves the address empty, so the test host makes no requests.
+Use a simulator with iOS 18.5 or later. The unit tests use a stubbed network. Xcode launches the app itself as the test host, though, and the app makes its usual launch requests (reading the profile, then today's summary and meals) to the configured server. `API_BASE_URL=` on the command line leaves the address empty, so the test host makes no requests.

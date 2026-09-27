@@ -95,11 +95,11 @@ The first slice of Phase 2. Plan: `docs/superpowers/plans/2026-09-25-milestone-0
 - **Base URL from the build configuration.** `API_BASE_URL` (Config/*.xcconfig, set per developer in the git-ignored `Config/Local.xcconfig`) → the `APIBaseURL` Info.plist key → `AppConfig`. The hardcoded IP is gone. The Mac's `.local` name survives network changes. Release has no URL until Phase 8.
 - **ATS:** `NSAllowsLocalNetworking` replaces `NSAllowsArbitraryLoads`.
 - **`APIClient`:** one request path for all six calls. It sends `X-Timezone` on every request, uses a 300 s timeout for estimates and 20 s otherwise, and never retries automatically.
-- **`APIError`:** shows the backend's `detail`, a generic message for 422, and connection failures that name the server. Retry on the Root and History error screens; the Dashboard clears stale errors.
+- **`APIError`:** shows the backend's `detail`, a generic message for 422, and connection failures that name the server. Retry on the Root and History error screens; the Dashboard clears stale errors. *(Milestone 0.7 replaced this single Dashboard error, whose clearing could erase a photo error, with separate errors per operation.)*
 - **Tests:** `URLProtocol`-stubbed client tests, config, error and decoding tests on iOS; the backend's error body shapes are pinned (`tests/test_error_contract.py`). No backend production change.
 - **Kept on purpose:** the snake_case model structs and plain `JSONDecoder` (switching to `convertFromSnakeCase` would break the explicit `CodingKeys`).
 
-**Still in Phase 2:** the image pipeline with `PhotosPicker` and the upload limit (Phase 1 item 6), planned as Milestone 0.6; the shared `NutritionStore`, full loading/empty states, the `goal_adjusted` notice and onboarding input ranges, planned as Milestone 0.7.
+**Still in Phase 2:** the image pipeline with `PhotosPicker` and the upload limit (Phase 1 item 6), planned as Milestone 0.6; the shared `NutritionStore`, full loading/empty states, the `goal_adjusted` notice and onboarding input ranges, planned as Milestone 0.7. *(0.7 made the existing ranges visible and consistent rather than tightening them.)*
 
 ## Milestone 0.6: photo pipeline (added 2026-09-25)
 
@@ -109,7 +109,19 @@ This completes Phase 1 item 6 and the photo part of Phase 2. Plan: `docs/superpo
 - **Photo sources.** Choose Photo (`PhotosPicker`) next to Take Photo. Take Photo appears only when the camera source is available. (The iOS 18.6 simulator provides a simulated camera, so there it's shown.)
 - **Upload limit.** `MAX_IMAGE_BYTES` (default 10 MiB): the route reads at most one byte past it and returns 413 above it. Uploads must also start with the signature of their declared type (JPEG, PNG or WebP), or they get a 400. Nothing is estimated or saved in either case. The HTTP layer still accepts any body size; a request-size cap belongs to the production deployment (Phase 8).
 - **No schema or response-shape change.** Meal `source` and the image reference stay in Phase 3.
-- **Deferred to 0.7:** automatic recovery after a network change (the 0.5 observation). 0.6's device acceptance records whether History's Retry recovers without a relaunch.
+- **Deferred to 0.7:** automatic recovery after a network change (the 0.5 observation). 0.6's device acceptance records whether History's Retry recovers without a relaunch. *(It did. 0.7 found the cause was the Dashboard's missing refresh triggers, not the networking layer.)*
+
+## Milestone 0.7: iOS client state (added 2026-09-26)
+
+This completes Phase 2. Plan: `docs/superpowers/plans/2026-09-26-milestone-0.7-client-state.md`. No backend change, no migration, no API change.
+
+- **Diagnosis.** The Dashboard loaded once. It had no Retry, no pull-to-refresh and no refresh on returning to the app, and it showed placeholder numbers (2200 / 0) as if they were data. `APIClient`, `URLSession` and the `.local` address hold no state that goes stale across a network change: in 0.6, a fresh request recovered at once.
+- **`NutritionStore`** (`@Observable`, owned by the app root): today's summary and meals only, loaded together and applied together. Concurrent refreshes share one request, and a failed refresh keeps the old data. Logging or deleting a meal fetches fresh data after any older refresh, whose result is dropped. The profile, forms, photos and each operation's own error stay in their views.
+- **Refresh triggers:** first appearance, the app becoming active (`scenePhase`), pull-to-refresh on both screens, Retry, and after log and delete. There's no connectivity monitoring and no automatic retry.
+- **Honest states:** dashes before the first load; data stays on screen while refreshing and after a failure, with a banner and Retry; History keeps its list while refreshing. Separate load, estimate, photo and delete errors (0.6 review #8). Cancelled requests are never shown as errors (0.5 review M4).
+- **Photos:** `PhotoDraft` adds Cancel to "Preparing photo…" (0.6 review #3); the newest pick still wins.
+- **Onboarding:** `goal_adjusted` is decoded and explained on the results step, using the returned goal, and BMR/Maintenance are hidden when adjusted or not positive. The existing input ranges are kept in one place, and an invalid weight is explained and blocks Continue instead of being clamped silently. Unit-conversion tests added.
+- **Still open, a product decision:** nutrition-policy goal bounds. The app's accepted inputs can still produce positive goals as low as 1 kcal (a 0.7 planning sweep found about 658,000 input combinations under 1000 kcal). This must be decided before the Phase 5 goal and macro features.
 
 ## Phase 1: Backend correctness
 
@@ -139,7 +151,7 @@ This completes Phase 1 item 6 and the photo part of Phase 2. Plan: `docs/superpo
 - An invalid calculated goal is **replaced and the user is notified**; onboarding is not rejected. *As implemented in 0.4, D4: "replaced" means a goal of 0 or below becomes the default 2200, and the response carries `goal_adjusted: true`. Positive goals are not clamped. The iOS notice comes in Phase 2.*
 - ~~Safety bounds live in one settings object that can be changed through the environment, not scattered constants.~~ *Superseded by 0.4, D4: no goal bounds exist yet. When a nutrition policy is decided, its bounds should be configurable settings.*
 - Production thresholds are decided separately; 1200 / 1500 kcal are placeholders only. *Still open: nutrition-policy bounds are deferred, to be decided at the latest before the Phase 5 goal and macro features.*
-- Zero, negative or clearly invalid goals must be impossible to store or serve. *Done in 0.4 for zero and negative goals: the `CHECK` constraint, the fallback and the summary guard. "Clearly invalid" positive goals (e.g. 154 kcal) are left to the nutrition policy.*
+- Zero, negative or clearly invalid goals must be impossible to store or serve. *Done in 0.4 for zero and negative goals: the `CHECK` constraint, the fallback and the summary guard. "Clearly invalid" positive goals (e.g. 154 kcal) are left to the nutrition policy.* *(Milestone 0.7 planning found that the app's own input ranges can give goals as low as 1 kcal; still undecided.)*
 
 **Not yet:** the goals table (Phase 3), macro targets, auth, new endpoints.
 
@@ -153,7 +165,7 @@ This completes Phase 1 item 6 and the photo part of Phase 2. Plan: `docs/superpo
 ## Phase 2: iOS stabilization
 
 **Accomplish**
-- The base URL comes from the build configuration (xcconfig → Info.plist key): Debug uses your LAN IP; Release uses the production URL, empty until Phase 8. Arbitrary HTTP loads are allowed only for local-network development.
+- The base URL comes from the build configuration (xcconfig → Info.plist key): Debug uses ~~your LAN IP~~ the Mac's `.local` name from `Config/Local.xcconfig` (Milestone 0.5); Release uses the production URL, empty until Phase 8. Arbitrary HTTP loads are allowed only for local-network development.
 - Remove `forceOnboarding`. ~~Keep your testing workflow with a Debug-only launch argument (e.g. `-resetOnboarding`).~~ *Removed in `10b7a8d`. The launch argument was superseded: onboarding state lives on the server (`onboarding_complete`), so a client flag can't reset it; re-onboarding needs a fresh database.*
 - An `APIClient` with:
   - one request function;
@@ -161,9 +173,9 @@ This completes Phase 1 item 6 and the photo part of Phase 2. Plan: `docs/superpo
   - a typed `APIError` that shows the backend's error message;
   - the `X-Timezone` header on every request.
 - An image pipeline: downscale to about 1024–1536 px on the long edge, JPEG at about 0.7 quality, off the main thread. Check the camera is available, and offer `PhotosPicker` as a fallback or alternative. *Done in Milestone 0.6 (1536 px, 0.7).*
-- Loading, error and empty states with a retry button on the Root, Dashboard and History screens. Clear stale errors after a successful refresh.
-- A shared `@Observable` `NutritionStore` (today's summary and meals), so the Dashboard and History read the same state.
-- Tests: decoding tests against fixture JSON, `APIClient` tests with a stubbed `URLProtocol`, and onboarding unit-conversion tests.
+- Loading, error and empty states with a retry button on the Root, Dashboard and History screens. Clear stale errors after a successful refresh. *Done in Milestone 0.7, with errors kept separate per operation.*
+- A shared `@Observable` `NutritionStore` (today's summary and meals), so the Dashboard and History read the same state. *Done in Milestone 0.7.*
+- Tests: decoding tests against fixture JSON, `APIClient` tests with a stubbed `URLProtocol`, and onboarding unit-conversion tests. *Done across Milestones 0.5–0.7.*
 
 **Why now:** once the backend is correct, the client has to stop hiding errors and start sending its timezone. Configuration is also a precondition for anyone else running the app.
 
