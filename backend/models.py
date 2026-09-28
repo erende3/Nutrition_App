@@ -72,6 +72,8 @@ class Meal(Base):
     __tablename__ = "meals"
     __table_args__ = (
         Index("ix_meals_user_local_date", "user_id", "local_date"),
+        # A deleted meal's id is never given to a new meal (migration 0007).
+        {"sqlite_autoincrement": True},
     )
 
     id: Mapped[int] = mapped_column(
@@ -126,6 +128,9 @@ class Meal(Base):
 
     # The model's full estimate (including its assumptions), never the image.
     ai_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    # When the meal was last edited, stored as naive UTC; NULL if never.
+    edited_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     user: Mapped["User"] = relationship(
         back_populates="meals",

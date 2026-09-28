@@ -536,3 +536,133 @@ def test_full_round_trip_keeps_meals_and_the_current_goal(db_url):
 
     assert db_migrations.current_revision(db_url) == head()
     assert rows(db_url, GOAL_ROWS) == [(1, "2026-09-01", 2633, "migrated")]
+
+
+IDENTITY = "0007_meal_identity_and_edits"
+BEFORE_IDENTITY = "0006_drop_user_goal_column"
+MEAL_INDEXES = {"ix_meals_id", "ix_meals_user_id", "ix_meals_user_local_date"}
+
+
+def meals_sql(db_url):
+    return rows(db_url, "SELECT sql FROM sqlite_master WHERE name = 'meals'")[0][0]
+
+
+def meals_sequence(db_url):
+    return rows(db_url, "SELECT seq FROM sqlite_sequence WHERE name = 'meals'")
+
+
+def insert_meals_with_ids(db_url, ids):
+    run_sql(
+        db_url,
+        [
+            "INSERT INTO meals (id, user_id, meal_name, calories, protein_g, "
+            "carbohydrates_g, fat_g, confidence, calorie_low, calorie_high, created_at, "
+            "local_date, source, description, ai_provider, ai_model, prompt_version, "
+            f"ai_payload) VALUES ({meal_id}, 1, 'Meal {meal_id}', {meal_id * 10}, 1.3, "
+            f"27.0, 0.3, 0.85, 90, 120, '2026-09-25 12:00:0{index}.156307', '2026-09-25', "
+            "'text', 'a banana', 'openai', 'gpt-4.1-mini', 'v1', "
+            "'{\"assumptions\": [\"one medium banana\"]}')"
+            for index, meal_id in enumerate(ids)
+        ],
+    )
+
+
+def test_identity_migration_keeps_every_meal_and_stops_reusing_ids(db_url):
+    alembic_cfg = db_migrations.alembic_config(db_url)
+    command.upgrade(alembic_cfg, BEFORE_IDENTITY)
+    run_sql(db_url, ["INSERT INTO users (id, age) VALUES (1, 30)"])
+    insert_meals_with_ids(db_url, [3, 7, 16])
+    before = rows(db_url, "SELECT * FROM meals ORDER BY id")
+
+    command.upgrade(alembic_cfg, IDENTITY)
+
+    assert rows(db_url, "SELECT * FROM meals ORDER BY id") == [tuple(row) + (None,) for row in before]
+    assert "AUTOINCREMENT" in meals_sql(db_url)
+    assert meals_sequence(db_url) == [(16,)]
+    columns = meal_columns(db_url)
+    assert columns["edited_at"]["nullable"] is True
+    inspector = inspect(create_engine(db_url))
+    assert {index["name"] for index in inspector.get_indexes("meals")} == MEAL_INDEXES
+    assert [
+        (key["referred_table"], key["constrained_columns"], key["referred_columns"])
+        for key in inspector.get_foreign_keys("meals")
+    ] == [("users", ["user_id"], ["id"])]
+    assert rows(db_url, "PRAGMA integrity_check") == [("ok",)]
+
+    # The newest meal's id is never handed out again.
+    run_sql(db_url, ["DELETE FROM meals WHERE id = 16"])
+    insert_dated_meal(db_url)
+    assert rows(db_url, "SELECT max(id) FROM meals") == [(17,)]
+
+
+def test_new_database_never_reuses_meal_ids(db_url):
+    db_migrations.upgrade_to_head(db_url)
+    run_sql(db_url, ["INSERT INTO users (id) VALUES (1)"])
+
+    insert_dated_meal(db_url)
+    insert_dated_meal(db_url)
+    run_sql(db_url, ["DELETE FROM meals WHERE id = 2"])
+    insert_dated_meal(db_url)
+
+    assert rows(db_url, "SELECT id FROM meals ORDER BY id") == [(1,), (3,)]
+
+
+def test_the_models_create_meals_with_autoincrement(db_url):
+    engine = create_engine(db_url)
+    Base.metadata.create_all(engine)
+
+    assert "AUTOINCREMENT" in meals_sql(db_url)
+
+
+def test_identity_migration_downgrades_and_upgrades_again(db_url):
+    alembic_cfg = db_migrations.alembic_config(db_url)
+    command.upgrade(alembic_cfg, BEFORE_IDENTITY)
+    run_sql(db_url, ["INSERT INTO users (id) VALUES (1)"])
+    insert_meals_with_ids(db_url, [4, 9])
+    before = rows(db_url, "SELECT * FROM meals ORDER BY id")
+    command.upgrade(alembic_cfg, IDENTITY)
+    run_sql(db_url, ["UPDATE meals SET edited_at = '2026-09-28 14:05:00' WHERE id = 9"])
+
+    command.downgrade(alembic_cfg, BEFORE_IDENTITY)
+
+    assert "edited_at" not in meal_columns(db_url)
+    assert "AUTOINCREMENT" not in meals_sql(db_url)
+    assert rows(db_url, "SELECT * FROM meals ORDER BY id") == before
+    assert meals_sequence(db_url) == []
+    assert {index["name"] for index in inspect(create_engine(db_url)).get_indexes("meals")} == MEAL_INDEXES
+
+    command.upgrade(alembic_cfg, IDENTITY)
+
+    assert rows(db_url, "SELECT id, edited_at FROM meals ORDER BY id") == [(4, None), (9, None)]
+    assert meals_sequence(db_url) == [(9,)]
+    assert rows(db_url, "PRAGMA integrity_check") == [("ok",)]
+
+
+def test_failed_identity_migration_leaves_meals_at_the_previous_revision(db_url, tmp_path):
+    alembic_cfg = db_migrations.alembic_config(db_url)
+    command.upgrade(alembic_cfg, BEFORE_IDENTITY)
+    run_sql(db_url, ["INSERT INTO users (id) VALUES (1)"])
+    insert_meals_with_ids(db_url, [5])
+    before_rows = rows(db_url, "SELECT * FROM meals")
+    before_sql = meals_sql(db_url)
+    location = tmp_path / "scripts"
+    shutil.copytree(BACKEND / "migrations", location, ignore=shutil.ignore_patterns("__pycache__"))
+    revision = location / "versions" / f"{IDENTITY}.py"
+    revision.write_text(
+        revision.read_text().replace(
+            "def downgrade()",
+            "_original_upgrade = upgrade\n\n\n"
+            "def upgrade():\n"
+            "    _original_upgrade()\n"
+            "    raise RuntimeError('deliberately broken migration')\n\n\n"
+            "def downgrade()",
+        )
+    )
+
+    with pytest.raises(RuntimeError, match="deliberately broken"):
+        db_migrations.upgrade_to_head(db_url, script_location=location)
+
+    assert db_migrations.current_revision(db_url) == BEFORE_IDENTITY
+    assert meals_sql(db_url) == before_sql
+    assert rows(db_url, "SELECT * FROM meals") == before_rows
+    assert rows(db_url, "PRAGMA integrity_check") == [("ok",)]
