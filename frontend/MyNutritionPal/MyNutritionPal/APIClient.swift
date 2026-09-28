@@ -65,6 +65,16 @@ final class APIClient {
         _ = try await data("DELETE", "/v1/meals/\(id)")
     }
 
+    /// Saves an edit (only the fields set in `changes`); returns the saved meal.
+    func updateMeal(id: Int, _ changes: MealChanges) async throws -> Meal {
+        try await send(
+            "PATCH",
+            "/v1/meals/\(id)",
+            body: try JSONEncoder().encode(changes),
+            contentType: "application/json"
+        )
+    }
+
     func getUserProfile() async throws -> UserProfile {
         try await send("GET", "/v1/users/profile")
     }

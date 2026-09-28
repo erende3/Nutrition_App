@@ -47,6 +47,43 @@ struct ModelDecodingTests {
         #expect(meals[0].carbohydrates_g == 25)
     }
 
+    /// What Meal Detail shows: the edit time and the AI's original estimate.
+    @Test func mealDecodesTheDetailFields() throws {
+        let meal = try decode(Meal.self, """
+        {"id": 7, "meal_name": "Burrito bowl", "calories": 650, "protein_g": 42,
+         "carbohydrates_g": 78, "fat_g": 24.5, "confidence": 0.7, "calorie_low": 600,
+         "calorie_high": 850, "assumptions": ["A regular bowl"], "source": "text",
+         "description": "burrito bowl", "local_date": "2026-09-28",
+         "created_at": "2026-09-28T16:15:00Z", "edited_at": "2026-09-28T16:41:00Z"}
+        """)
+
+        #expect(meal.confidence == 0.7)
+        #expect(meal.calorie_low == 600)
+        #expect(meal.calorie_high == 850)
+        #expect(meal.assumptions == ["A regular bowl"])
+        #expect(meal.source == "text")
+        #expect(meal.description == "burrito bowl")
+        #expect(meal.edited_at == "2026-09-28T16:41:00Z")
+    }
+
+    /// A meal logged before 0.8 and never edited; also a server from before
+    /// edited_at existed.
+    @Test(arguments: [#""edited_at": null,"#, ""])
+    func mealWithoutDetailsDecodesAsAbsent(_ editedAt: String) throws {
+        let meal = try decode(Meal.self, """
+        {"id": 16, "meal_name": "Pepperoni Pizza Slice", "calories": 280, "protein_g": 13,
+         "carbohydrates_g": 30, "fat_g": 12, "confidence": 0.85, "calorie_low": 240,
+         "calorie_high": 320, "assumptions": null, "source": null, "description": null,
+         \(editedAt) "local_date": "2026-09-25", "created_at": "2026-09-26T03:50:37Z"}
+        """)
+
+        #expect(meal.assumptions == nil)
+        #expect(meal.source == nil)
+        #expect(meal.description == nil)
+        #expect(meal.edited_at == nil)
+        #expect(meal.confidence == 0.85)
+    }
+
     @Test(arguments: ["100", "100.0"])
     func dayDecodesWithPercentageAsIntOrFloat(_ percentage: String) throws {
         let day = try decode(Day.self, """

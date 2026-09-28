@@ -37,6 +37,7 @@ struct MealRowAccessibilityTests {
         let meal = try JSONDecoder().decode(Meal.self, from: Data("""
         {"id": 1, "meal_name": "Chicken and rice", "calories": 650,
          "protein_g": 45.0, "carbohydrates_g": 70.4, "fat_g": 15.0,
+         "confidence": 0.8, "calorie_low": 550, "calorie_high": 750,
          "local_date": "2026-09-27", "created_at": "2026-09-27T16:04:05Z"}
         """.utf8))
 

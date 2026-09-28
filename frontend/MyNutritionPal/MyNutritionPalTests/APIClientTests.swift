@@ -112,6 +112,39 @@ extension StubbedNetwork {
             #expect(try onlyRequest.url?.absoluteString == "http://Erics-Mac.local:8000/v1/meals/7")
         }
 
+        /// Only the changed fields are sent, as JSON; the saved meal comes back.
+        @Test func updateMealSendsOnlyTheChangesAndReturnsTheMeal() async throws {
+            let api = client()
+            respond(mealJSON)
+
+            let meal = try await api.updateMeal(
+                id: 7,
+                MealChanges(meal_name: "Big lunch", calories: 700, fat_g: 15.5)
+            )
+
+            #expect(meal.id == 7)
+            let request = try onlyRequest
+            #expect(request.httpMethod == "PATCH")
+            #expect(request.url?.absoluteString == "http://Erics-Mac.local:8000/v1/meals/7")
+            #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+            #expect(request.timeoutInterval == APIClient.defaultTimeout)
+            let body = try #require(StubURLProtocol.bodyData(of: request))
+            let sent = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+            #expect(Set(sent.keys) == ["meal_name", "calories", "fat_g"])
+            #expect(sent["meal_name"] as? String == "Big lunch")
+            #expect(sent["calories"] as? Int == 700)
+            #expect(sent["fat_g"] as? Double == 15.5)
+        }
+
+        @Test func updateMealNotFoundIsAServerError() async {
+            let api = client()
+            respond(#"{"error": {"code": "meal_not_found", "message": "Meal not found."}}"#, status: 404)
+
+            await #expect(throws: APIError.server(status: 404, code: "meal_not_found", message: "Meal not found.")) {
+                _ = try await api.updateMeal(id: 999, MealChanges(calories: 1))
+            }
+        }
+
         @Test func submitOnboardingSendsTheSameJSON() async throws {
             let api = client()
             respond(onboardingJSON)

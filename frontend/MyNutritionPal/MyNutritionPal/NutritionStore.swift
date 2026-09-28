@@ -103,6 +103,58 @@ final class NutritionStore {
         }
     }
 
+    /// Saves an edit to a meal and returns the saved meal as soon as it's
+    /// saved. The meal shows its new values at once; its own day (the past
+    /// day History shows, or else today) is fetched again in the background
+    /// for the totals, and any load of that day already running is dropped.
+    /// If the meal no longer exists, its row goes, its day is fetched again,
+    /// and it throws meal_not_found. Any other failure changes nothing.
+    func updateMeal(_ meal: Meal, _ changes: MealChanges) async throws -> Meal {
+        do {
+            let saved = try await api.updateMeal(id: meal.id, changes)
+            replace(meal.id, on: meal.local_date) { _ in saved }
+            return saved
+        } catch let error as APIError {
+            if case .server(404, "meal_not_found"?, _) = error {
+                replace(meal.id, on: meal.local_date) { _ in nil }
+            }
+            throw error
+        }
+    }
+
+    /// What History has for a meal on its date: the meal, `missing` if that
+    /// day is loaded without it (deleted), or `notLoaded` if no loaded day is
+    /// that date (never read as deleted).
+    func lookup(_ id: Meal.ID, on date: String) -> MealLookup {
+        guard let loaded = [day, pastDay].compactMap({ $0 }).first(where: { $0.date == date }) else {
+            return .notLoaded
+        }
+        return loaded.meals.first { $0.id == id }.map(MealLookup.found) ?? .missing
+    }
+
+    enum MealLookup: Equatable {
+        case found(Meal)
+        case missing
+        case notLoaded
+    }
+
+    /// Replaces (or with nil removes) a meal's row on its day, then fetches
+    /// that day again; a load of it already running is dropped first.
+    private func replace(_ id: Meal.ID, on date: String, with newMeal: (Meal) -> Meal?) {
+        func apply(_ meals: inout [Meal]) {
+            meals = meals.compactMap { $0.id == id ? newMeal($0) : $0 }
+        }
+
+        if date == pastDate {
+            pastDayLoads += 1
+            if pastDay != nil { apply(&pastDay!.meals) }
+            Task { await refreshPastDay() }
+        } else {
+            refreshAfterChange()
+            if day != nil { apply(&day!.meals) }
+        }
+    }
+
     /// Shows `date` (YYYY-MM-DD) in History and loads it. Nil, today or a
     /// later date shows today.
     func showDay(_ date: String?) async {
