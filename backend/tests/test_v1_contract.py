@@ -37,6 +37,7 @@ MEAL = {
     "description": nullable(STR),
     "local_date": STR,
     "created_at": STR,
+    "edited_at": nullable(STR),
 }
 
 INTERNAL_MEAL_FIELDS = {"user_id", "ai_provider", "ai_model", "prompt_version", "ai_payload"}
@@ -144,6 +145,7 @@ EXPECTED_V1_OPERATIONS = {
     ("get", "/days/{day}"): ("200", "DayResponse"),
     ("post", "/meals/estimate"): ("201", "MealResource"),
     ("delete", "/meals/{meal_id}"): ("204", None),
+    ("patch", "/meals/{meal_id}"): ("200", "MealResource"),
     ("get", "/users/profile"): ("200", "UserProfileResponse"),
     ("post", "/users/onboarding"): ("200", "UserOnboardingResponse"),
 }

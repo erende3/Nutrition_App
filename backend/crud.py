@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from sqlalchemy.orm import Session
 
@@ -102,6 +102,41 @@ def delete_meal(
     db.commit()
 
     return True
+
+def update_meal(
+    db: Session,
+    user: User,
+    meal_id: int,
+    changes: dict,
+    now: datetime,
+) -> Meal | None:
+    """Saves the changed fields of one of the user's meals exactly as given.
+    edited_at (naive UTC) moves only when a value actually changes. Returns
+    None if the user has no such meal."""
+
+    meal = (
+        db.query(Meal)
+        .filter(
+            Meal.id == meal_id,
+            Meal.user_id == user.id,
+        )
+        .first()
+    )
+
+    if meal is None:
+        return None
+
+    changed = {field: value for field, value in changes.items() if getattr(meal, field) != value}
+
+    for field, value in changed.items():
+        setattr(meal, field, value)
+
+    if changed:
+        meal.edited_at = now.astimezone(timezone.utc).replace(tzinfo=None)
+        db.commit()
+        db.refresh(meal)
+
+    return meal
 
 def goal_for(
     db: Session,

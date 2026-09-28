@@ -1,7 +1,16 @@
 from datetime import date, datetime
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field, field_serializer
+from typing import Annotated
+
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PlainSerializer,
+    StringConstraints,
+    model_validator,
+)
 
 
 class NutritionEstimate(BaseModel):
@@ -169,6 +178,14 @@ class HomeResponse(BaseModel):
 # may be added to these responses without a new version.
 
 
+# A stored naive-UTC time, sent as UTC to the second: YYYY-MM-DDTHH:MM:SSZ.
+UtcSeconds = Annotated[
+    datetime,
+    PlainSerializer(lambda value: value.strftime("%Y-%m-%dT%H:%M:%SZ"), return_type=str),
+    Field(json_schema_extra={"format": "date-time"}),
+]
+
+
 class MealResource(BaseModel):
     """A saved meal. Provenance (the AI provider, model, prompt version and
     raw output) stays internal."""
@@ -191,12 +208,36 @@ class MealResource(BaseModel):
     # The user's calendar date when the meal was logged.
     local_date: date
     # When the meal was logged, in UTC: YYYY-MM-DDTHH:MM:SSZ.
-    created_at: datetime = Field(json_schema_extra={"format": "date-time"})
+    created_at: UtcSeconds
+    # When the meal was last edited, in the same format; null if never.
+    edited_at: UtcSeconds | None
 
-    @field_serializer("created_at")
-    def _utc_seconds(self, value: datetime) -> str:
-        # Stored as naive UTC.
-        return value.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+# Input sanity limits for an edited meal (Milestone 0.12, E7), not nutrition
+# policy. Strict: a number sent as text, or true/false, is refused.
+MealName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+Calories = Annotated[int, Field(strict=True, ge=0, le=10_000)]
+Grams = Annotated[float, Field(strict=True, ge=0, le=1_000, allow_inf_nan=False)]
+
+
+class MealUpdate(BaseModel):
+    """An edit to a meal: any of these fields, at least one. Each is saved
+    exactly as sent (the name trimmed); nothing is rescaled or recalculated."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # Defaults of None mark a field as not sent; sending null is refused.
+    meal_name: MealName = None
+    calories: Calories = None
+    protein_g: Grams = None
+    carbohydrates_g: Grams = None
+    fat_g: Grams = None
+
+    @model_validator(mode="after")
+    def _something_to_change(self):
+        if not self.model_fields_set:
+            raise ValueError("Change at least one field.")
+        return self
 
 
 class DayGoal(BaseModel):

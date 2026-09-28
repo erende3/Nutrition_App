@@ -17,13 +17,14 @@ from pydantic import BeforeValidator
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException
 
-from crud import delete_meal
+from crud import delete_meal, update_meal
 from dependencies import get_current_user, get_db, get_request_timezone
 from errors import ApiError
 from models import Meal, User
 from routes import users
 from routes.meals import save_estimated_meal
-from schemas import DayResponse, ErrorResponse, MealResource
+from schemas import DayResponse, ErrorResponse, MealResource, MealSource, MealUpdate
+from services import clock
 from services.summary import get_day
 
 app = FastAPI(
@@ -100,6 +101,21 @@ def _yyyy_mm_dd(value):
 IsoDate = Annotated[date, BeforeValidator(_yyyy_mm_dd)]
 
 
+# The text old app builds sent (and stored as the description) for a photo
+# with no words. Copied, not imported: it must stay this exact historical
+# string even if the estimator's prompt changes (Milestone 0.10, D6).
+OLD_PHOTO_PLACEHOLDER = "Estimate this meal from the image."
+
+
+def public_description(meal: Meal) -> str | None:
+    """The user's own text: never the old placeholder. Stored data is never
+    rewritten; the unversioned routes don't expose descriptions."""
+
+    if meal.source == MealSource.photo and meal.description == OLD_PHOTO_PLACEHOLDER:
+        return None
+    return meal.description
+
+
 def meal_resource(meal: Meal) -> MealResource:
     return MealResource(
         id=meal.id,
@@ -113,9 +129,10 @@ def meal_resource(meal: Meal) -> MealResource:
         calorie_high=meal.calorie_high,
         assumptions=(meal.ai_payload or {}).get("assumptions"),
         source=meal.source,
-        description=meal.description,
+        description=public_description(meal),
         local_date=meal.local_date,
         created_at=meal.created_at,
+        edited_at=meal.edited_at,
     )
 
 
@@ -155,6 +172,32 @@ def remove_meal(
         raise ApiError(404, "meal_not_found", "Meal not found.")
 
     return Response(status_code=204)
+
+
+@app.patch("/meals/{meal_id}", tags=["meals"], responses=ERROR_RESPONSES)
+def edit_meal(
+    meal_id: int,
+    changes: MealUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> MealResource:
+    """Edit a meal's name, calories or macros. Only the fields sent change,
+    exactly as sent; its day, time, text and the AI's original estimate
+    stay. Sending the values it already has changes nothing, edited_at
+    included. Last write wins."""
+
+    meal = update_meal(
+        db=db,
+        user=user,
+        meal_id=meal_id,
+        changes=changes.model_dump(exclude_unset=True),
+        now=clock.utc_now(),
+    )
+
+    if meal is None:
+        raise ApiError(404, "meal_not_found", "Meal not found.")
+
+    return meal_resource(meal)
 
 
 @app.get("/days/{day}", tags=["days"], responses=ERROR_RESPONSES)
