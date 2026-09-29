@@ -237,6 +237,22 @@ extension StubbedNetwork {
             #expect(store.meals?.map(\.id) == [1])
         }
 
+        /// A meal on a date History doesn't have loaded (e.g. today before
+        /// midnight passed): the past day is left alone.
+        @Test func editingAMealOnAnUnloadedDateLeavesThePastDayAlone() async throws {
+            let server = Server([today: [1: 100], pastDate: [7: 300], "2026-09-20": [5: 50]])
+            let store = await loaded(server)
+            let pastBefore = store.pastDay
+            let meal = try JSONDecoder().decode(Meal.self, from: Data(mealJSON(5, calories: 50, date: "2026-09-20").utf8))
+
+            let saved = try await store.updateMeal(meal, MealChanges(calories: 60))
+
+            #expect(saved.calories == 60)
+            #expect(store.pastDay?.meals == pastBefore?.meals)
+            #expect(dayRequests(for: pastDate) == 1)
+            #expect(store.lookup(5, on: "2026-09-20") == .notLoaded)
+        }
+
         // MARK: Meal Detail's lookup
 
         @Test func lookupFindsTheMealOnItsLoadedDay() async throws {
@@ -245,6 +261,24 @@ extension StubbedNetwork {
 
             #expect(store.lookup(1, on: today) == .found(try #require(store.meals?.first)))
             #expect(store.lookup(7, on: pastDate) == .found(try #require(store.pastDay?.meals.first)))
+        }
+
+        /// After midnight, today's data may still be yesterday's while History
+        /// shows yesterday: the past day, which edits update, wins.
+        @Test func lookupPrefersThePastDayWhenBothHaveTheDate() async throws {
+            let store = store(Server([:]))
+            StubURLProtocol.handler = { request in
+                let calories = request.url?.lastPathComponent == pastDate ? 999 : 300
+                return (200, Data(dayJSON(pastDate, [7: calories]).utf8))
+            }
+            await store.refresh()
+            await store.showDay(pastDate)
+
+            guard case .found(let meal) = store.lookup(7, on: pastDate) else {
+                Issue.record("not found")
+                return
+            }
+            #expect(meal.calories == 999)
         }
 
         /// Gone only when a loaded day for that date no longer has it.

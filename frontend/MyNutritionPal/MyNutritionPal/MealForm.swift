@@ -107,11 +107,12 @@ struct MealForm: Equatable {
     }
 
     private enum Problem: Error {
-        case noName, nameTooLong, notWhole, caloriesOutOfRange, notANumber, tooManyDecimals, gramsOutOfRange
+        case noName, controlCharacters, nameTooLong, notWhole, caloriesOutOfRange, notANumber, tooManyDecimals, gramsOutOfRange
 
         var message: String {
             switch self {
             case .noName: "Enter a name."
+            case .controlCharacters: "Use letters, numbers and punctuation only."
             case .nameTooLong: "Use 80 characters or fewer."
             case .notWhole: "Enter a whole number."
             case .caloriesOutOfRange: "Enter 0 to 10,000 calories."
@@ -130,23 +131,33 @@ struct MealForm: Equatable {
         let text = self[field].trimmingCharacters(in: .whitespacesAndNewlines)
         switch field {
         case .name:
-            if text.isEmpty { return .failure(.noName) }
-            if text.count > 80 { return .failure(.nameTooLong) }
+            // As the server checks it: no control characters, something
+            // visible, and at most 80 code points.
+            let scalars = text.unicodeScalars
+            if scalars.contains(where: { $0.properties.generalCategory == .control }) {
+                return .failure(.controlCharacters)
+            }
+            if scalars.allSatisfy({ $0.properties.generalCategory == .format || $0.properties.isWhitespace }) {
+                return .failure(.noName)
+            }
+            if scalars.count > 80 { return .failure(.nameTooLong) }
             return .success(.text(text))
         case .calories:
             guard let number = Int(text) else { return .failure(.notWhole) }
             guard (0...10_000).contains(number) else { return .failure(.caloriesOutOfRange) }
             return .success(.whole(number))
         case .protein, .carbs, .fat:
-            // Digits with an optional decimal part, in the device's format.
+            // Digits (the device's own, or 0–9) with an optional decimal
+            // part, in the device's format. A minus sign is never in range.
             let negative = text.hasPrefix("-")
             let parts = (negative ? String(text.dropFirst()) : text)
                 .split(separator: locale.decimalSeparator ?? ".", omittingEmptySubsequences: false)
+                .map { $0.map { $0.wholeNumberValue.map(String.init) ?? "?" }.joined() }
             guard (1...2).contains(parts.count),
-                  parts.allSatisfy({ !$0.isEmpty && $0.allSatisfy { ("0"..."9").contains($0) } }),
-                  let grams = Double((negative ? "-" : "") + parts.joined(separator: "."))
+                  parts.allSatisfy({ !$0.isEmpty && !$0.contains("?") }),
+                  let grams = Double(parts.joined(separator: "."))
             else { return .failure(.notANumber) }
-            guard (0...1_000).contains(grams) else { return .failure(.gramsOutOfRange) }
+            guard !negative, (0...1_000).contains(grams) else { return .failure(.gramsOutOfRange) }
             if parts.count == 2, parts[1].count > 1 { return .failure(.tooManyDecimals) }
             return .success(.grams(grams))
         }

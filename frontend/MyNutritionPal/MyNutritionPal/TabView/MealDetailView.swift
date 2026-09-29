@@ -88,12 +88,13 @@ struct MealDetailView: View {
             Text(Self.loggedText(localDate: meal.local_date, createdAt: meal.created_at, today: today))
                 .font(.subheadline)
                 .foregroundStyle(.textSecondary)
-                .accessibilityLabel("Logged \(Self.loggedText(localDate: meal.local_date, createdAt: meal.created_at, today: today))")
+                .accessibilityLabel(Self.spokenLogged(localDate: meal.local_date, createdAt: meal.created_at, today: today))
 
             if let edited = meal.edited_at.flatMap({ Self.editedText($0, today: today) }) {
                 Label(edited, systemImage: "pencil")
                     .font(.subheadline)
                     .foregroundStyle(.textSecondary)
+                    .accessibilityLabel(meal.edited_at.flatMap { Self.editedText($0, today: today, spoken: true) } ?? edited)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -270,15 +271,32 @@ struct MealDetailView: View {
         return "\(day) · \(time(logged, locale: locale, timeZone: timeZone))"
     }
 
-    /// "Edited Sep 28 at 2:05 PM", with the year when it isn't this year.
+    /// For VoiceOver: "Logged Friday, September 25, 2026 at 8:50 PM".
+    static func spokenLogged(
+        localDate: String,
+        createdAt: String,
+        today: String,
+        locale: Locale = .autoupdatingCurrent,
+        timeZone: TimeZone = .autoupdatingCurrent
+    ) -> String {
+        var calendar = Calendar.autoupdatingCurrent
+        calendar.timeZone = timeZone
+        let day = MealHistoryView.spokenDate(for: localDate, today: today, locale: locale, calendar: calendar)
+        guard let logged = try? Date(createdAt, strategy: .iso8601) else { return "Logged \(day)" }
+        return "Logged \(day) at \(time(logged, locale: locale, timeZone: timeZone))"
+    }
+
+    /// "Edited Sep 28 at 2:05 PM", with the year when it isn't this year;
+    /// `spoken` (for VoiceOver) writes the month in full.
     static func editedText(
         _ editedAt: String,
         today: String,
+        spoken: Bool = false,
         locale: Locale = .autoupdatingCurrent,
         timeZone: TimeZone = .autoupdatingCurrent
     ) -> String? {
         guard let edited = try? Date(editedAt, strategy: .iso8601) else { return nil }
-        var style = Date.FormatStyle(locale: locale, timeZone: timeZone).month(.abbreviated).day()
+        var style = Date.FormatStyle(locale: locale, timeZone: timeZone).month(spoken ? .wide : .abbreviated).day()
         if APIClient.dayString(edited, in: timeZone).prefix(4) != today.prefix(4) {
             style = style.year()
         }

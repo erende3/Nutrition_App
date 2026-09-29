@@ -100,6 +100,42 @@ struct MealFormTests {
         #expect(form.isDirty)
     }
 
+    /// The server counts a name's code points: so does the form.
+    @Test func nameLengthCountsLikeTheServer() throws {
+        var form = MealForm(meal: try meal(), locale: us)
+        form.name = String(repeating: "x", count: 79) + "👍🏽"
+        #expect(form.error(for: .name) == "Use 80 characters or fewer.")
+
+        form.name = String(repeating: "x", count: 78) + "👍🏽"
+        #expect(form.error(for: .name) == nil)
+    }
+
+    @Test(arguments: [("\u{200B}", "Enter a name."), ("\u{200B} \u{200D}", "Enter a name."),
+                      ("a\u{7}b", "Use letters, numbers and punctuation only.")])
+    func invisibleOrControlCharactersAreRefused(_ name: String, _ message: String) throws {
+        var form = MealForm(meal: try meal(), locale: us)
+        form.name = name
+
+        #expect(form.error(for: .name) == message)
+    }
+
+    @Test func minusZeroIsOutOfRange() throws {
+        var form = MealForm(meal: try meal(), locale: us)
+        form.fat = "-0"
+
+        #expect(form.error(for: .fat) == "Enter 0 to 1,000 g.")
+    }
+
+    /// A locale with its own digits opens, and saves, in them.
+    @Test func arabicDigitsWork() throws {
+        let arabic = Locale(identifier: "ar_EG")
+        var form = MealForm(meal: try meal(protein: 18.5), locale: arabic)
+        #expect(form.isValid)
+
+        form.protein = "٢٠٫٥"
+        #expect(form.changes == MealChanges(protein_g: 20.5))
+    }
+
     @Test func theLimitsThemselvesAreAccepted() throws {
         var form = MealForm(meal: try meal(), locale: us)
         form.name = String(repeating: "x", count: 80)
@@ -163,6 +199,18 @@ struct MealDetailTextTests {
         )
 
         #expect(text == "Edited Sep 28 at 2:05\u{202F}PM")
+    }
+
+    @Test func voiceOverHearsTheMonthInFull() {
+        let pacific = TimeZone(identifier: "America/Los_Angeles")!
+
+        #expect(MealDetailView.spokenLogged(
+            localDate: "2026-09-25", createdAt: "2026-09-26T03:50:37Z",
+            today: "2026-09-28", locale: us, timeZone: pacific
+        ) == "Logged Friday, September 25, 2026 at 8:50\u{202F}PM")
+        #expect(MealDetailView.editedText(
+            "2026-09-28T21:05:00Z", today: "2026-09-28", spoken: true, locale: us, timeZone: pacific
+        ) == "Edited September 28 at 2:05\u{202F}PM")
     }
 
     @Test func editedInAnotherYearHasTheYear() {

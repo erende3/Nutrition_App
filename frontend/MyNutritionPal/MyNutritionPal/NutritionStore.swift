@@ -126,7 +126,9 @@ final class NutritionStore {
     /// day is loaded without it (deleted), or `notLoaded` if no loaded day is
     /// that date (never read as deleted).
     func lookup(_ id: Meal.ID, on date: String) -> MealLookup {
-        guard let loaded = [day, pastDay].compactMap({ $0 }).first(where: { $0.date == date }) else {
+        // The past day first: after midnight, today's data can still be for
+        // the date History shows, and edits update the past day.
+        guard let loaded = [pastDay, day].compactMap({ $0 }).first(where: { $0.date == date }) else {
             return .notLoaded
         }
         return loaded.meals.first { $0.id == id }.map(MealLookup.found) ?? .missing

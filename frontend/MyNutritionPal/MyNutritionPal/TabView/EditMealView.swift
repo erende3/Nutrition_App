@@ -42,7 +42,9 @@ struct EditMealView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Couldn't Save Changes")
                                 .font(.headline)
-                            Text("\(saveError) Your changes are still here. Try again.")
+                            Text(saveError)
+                                .font(.subheadline)
+                            Text("Your changes are still here. Try again.")
                                 .font(.subheadline)
                         }
                         .foregroundStyle(.danger)
@@ -95,12 +97,14 @@ struct EditMealView: View {
             Text("This meal was deleted, so your changes can't be saved.")
         }
         .onChange(of: form.name) { _, name in
-            // A wrapping field takes Return as a line break: a name is one
-            // line, so Return goes on to Calories instead.
-            if name.contains("\n") {
-                form.name = name.replacingOccurrences(of: "\n", with: "")
-                focus = .calories
-            }
+            // A wrapping field takes Return as a line break. A name is one
+            // line: Return (a line break at the end) goes on to Calories, and
+            // pasted line breaks become spaces.
+            guard name.contains("\n") else { return }
+            let pressedReturn = name.hasSuffix("\n")
+            form.name = (pressedReturn ? String(name.dropLast()) : name)
+                .replacingOccurrences(of: "\n", with: " ")
+            if pressedReturn { focus = .calories }
         }
         .onChange(of: focus) { left, _ in
             // Say what's wrong with a field once, as VoiceOver leaves it.
@@ -190,18 +194,23 @@ struct EditMealView: View {
             } else if dynamicTypeSize.isAccessibilitySize {
                 Text(unit.map { "\(label) (\($0))" } ?? label)
                     .accessibilityHidden(true)
+                    .onTapGesture { focus = field }
                 input
             } else {
                 HStack(spacing: 10) {
                     Text(label)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                         .accessibilityHidden(true)
+                        .onTapGesture { focus = field }
                     input
                         .frame(width: 110)
                     Text(unit ?? "")
                         .foregroundStyle(.textSecondary)
                         .frame(width: 28, alignment: .leading)
+                        .contentShape(Rectangle())
                         .accessibilityHidden(true)
+                        .onTapGesture { focus = field }
                 }
             }
 
@@ -210,9 +219,6 @@ struct EditMealView: View {
                     .accessibilityHidden(true)
             }
         }
-        // A tap anywhere in the row (the label too) goes to its field.
-        .contentShape(Rectangle())
-        .onTapGesture { focus = field }
         .listRowBackground(Color.surface)
     }
 
@@ -267,6 +273,7 @@ private struct DismissAttempt: UIViewControllerRepresentable {
     final class Controller: UIViewController, UIAdaptivePresentationControllerDelegate {
         var action: () -> Void
         private weak var original: UIAdaptivePresentationControllerDelegate?
+        private weak var presentation: UIPresentationController?
 
         init(action: @escaping () -> Void) {
             self.action = action
@@ -274,6 +281,13 @@ private struct DismissAttempt: UIViewControllerRepresentable {
         }
 
         required init?(coder: NSCoder) { nil }
+
+        /// Hands the delegate back, so SwiftUI still hears the sheet close.
+        deinit {
+            if presentation?.delegate === self {
+                presentation?.delegate = original
+            }
+        }
 
         override func viewDidAppear(_ animated: Bool) {
             super.viewDidAppear(animated)
@@ -284,9 +298,12 @@ private struct DismissAttempt: UIViewControllerRepresentable {
         func install() {
             var sheet: UIViewController = self
             while let parent = sheet.parent { sheet = parent }
-            guard let presentation = sheet.presentationController,
+            // Not in the sheet yet (the first update comes before that).
+            guard sheet !== self,
+                  let presentation = sheet.presentationController,
                   presentation.delegate !== self else { return }
             original = presentation.delegate
+            self.presentation = presentation
             presentation.delegate = self
         }
 
