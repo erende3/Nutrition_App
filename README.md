@@ -106,7 +106,7 @@ The API is versioned under `/v1` (schema at `/v1/openapi.json`, docs at `/v1/doc
 
 A meal's `created_at` is UTC, always `YYYY-MM-DDTHH:MM:SSZ`; `edited_at` has the same format, or is `null` if the meal was never edited. `assumptions`, `source` and `description` are `null` for meals logged before they were recorded; `description` is also `null` for a photo meal sent without text (the estimator is then asked with the placeholder the app used to send, so the prompt version is unchanged). Photo meals that older app builds saved with that placeholder as their description are also served with `description: null`; the stored value isn't changed.
 
-**Meal ids** are never reused: a deleted meal's id is never given to a new meal (migration `0007`), so an id a client holds always means the same meal or none.
+**Meal ids** are never reused from migration `0007` on: a deleted meal's id is never given to a new meal, so an id a client holds means the same meal or none. (Ids deleted above the highest one before that migration can't be known and may be used once more.)
 
 **Editing a meal.** `PATCH /v1/meals/{id}` takes JSON with any of `meal_name`, `calories`, `protein_g`, `carbohydrates_g` and `fat_g` (at least one). Each is saved exactly as sent: calories and macros are independent, so nothing is rescaled or recalculated. The limits are input sanity, not nutrition advice: a name of 1–80 characters (trimmed), calories a whole number from 0 to 10,000, macros from 0 to 1,000 g. Anything else in the body (the description, date, time, source or AI fields), `null`, an empty body or a value out of range returns 422 `validation_failed`, and nothing changes. `edited_at` moves only when a value actually changes; sending the values a meal already has changes nothing. The meal's date, time, text and the AI's original range, confidence and assumptions are never changed, and totals follow the edit because they're summed when read. Another user's meal, or a missing one, is 404 `meal_not_found`. The last edit wins.
 
@@ -120,7 +120,7 @@ A meal's `created_at` is UTC, always `YYYY-MM-DDTHH:MM:SSZ`; `edited_at` has the
 | 404 | `meal_not_found`, `not_found` | No such meal (for this user); no such route |
 | 405 | `method_not_allowed` | |
 | 413 | `image_too_large` | Over `MAX_IMAGE_BYTES` |
-| 422 | `validation_failed` | Invalid body, path or date; an estimate with neither text nor photo |
+| 422 | `validation_failed` | Invalid body, path, date or meal id; an estimate with neither text nor photo; an edit with nothing to change |
 | 500 | `internal_error` | Anything unexpected; details are logged, never returned |
 | 502 / 503 / 504 | `estimation_failed` / `estimation_unavailable` / `estimation_timeout` | The AI provider failed / isn't configured / timed out |
 | other | `http_error` | Any other HTTP error the framework raises (fallback; not expected in normal use) |
@@ -170,7 +170,7 @@ Refreshes that overlap share one request. If a refresh fails, the data already o
 
 **History by date.** History opens on today (the shared day above) and can show any earlier day: previous and next day, the date (which opens a calendar limited to today and earlier) and a Today button. A past day is loaded separately and never replaces today's data. Choosing another day clears the old day's meals at once, and only the most recent choice's answer is shown, so a day's meals never appear under another date. The chosen day stays while the app runs (including in the background); on today, History moves to the new day at midnight. Deleting a meal refetches the day it was on.
 
-**Meal details and editing.** Tapping a meal in History opens its details: its numbers, when it was logged (and last edited), what it was logged from, and the AI's original estimate (range, confidence, assumptions), leaving out anything the server doesn't have. **Edit** opens a sheet for the name, calories and macros. Save is enabled once something changed and everything is valid; problems are explained under each field. Cancel discards; swiping the sheet down with changes asks first; if saving fails, what you typed stays. A saved edit shows at once, and only that meal's day is fetched again. If the meal was deleted meanwhile, the app says so instead of saving. Swipe to delete still works on the rows.
+**Meal details and editing.** Tapping a meal in History opens its details: its numbers, when it was logged (and last edited), what it was logged from, and the AI's original estimate (range, confidence, assumptions), leaving out anything the server doesn't have. **Edit** opens a sheet for the name, calories and macros. Save is enabled once something changed and everything is valid; problems are explained under each field. Cancel discards; swiping the sheet down with changes asks first; if saving fails, what you typed stays. A saved edit shows at once, and only that meal's day is fetched again (today's, if the date changed while it was open). If the meal was deleted meanwhile, the app says so instead of saving. Swipe to delete still works on the rows.
 
 ### Meal photos
 

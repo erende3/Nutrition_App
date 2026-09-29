@@ -176,6 +176,7 @@ Stable meal identity, meal detail and direct editing. Plan: `docs/superpowers/pl
 - **`edited_at`** (nullable, naive UTC like `created_at`), exposed in `MealResource`.
 - **`PATCH /v1/meals/{id}`:** name, calories, protein, carbs and fat only, each saved exactly as sent (no rescaling or recalculation), within input-sanity limits (name 1–80, calories 0–10,000, macros 0–1,000 g), which are not nutrition policy. `edited_at` moves only when a value changes. Everything else about the meal, including the AI's original estimate, stays. Last write wins.
 - **Placeholder mapping (0.10 D6):** v1 serves the old photo placeholder description as `null`; stored data untouched.
+- **Review fixes:** a meal id too large for SQLite is a 422, not a 500 (PATCH and DELETE); names of only invisible characters, or with control characters, are refused; `-0` grams is saved as 0.
 - **iOS:** History rows open Meal Detail (swipe to delete stays); Edit opens a sheet with inline validation, a confirmation before a swipe discards changes, and typed values kept when a save fails. Meal Detail follows the meal on its loaded day and says Meal Not Found only when that day no longer has it. Pre-0.8 meals show only what they have (no source, text or assumptions).
 - **Deferred:** AI re-estimation, moving meals between dates, `eaten_at`, editing the time or description, Settings and its placement, profile and goal editing, manual goals, the calorie-goal bounds, macro targets and progress, day-level macro summary, UUID/public id, soft delete, retiring the unversioned routes, and the other items in the plan's section 9.
 
@@ -312,7 +313,7 @@ Stable meal identity, meal detail and direct editing. Plan: `docs/superpowers/pl
 
 **Accomplish**
 - Meal edit (`PATCH /v1/meals/{id}` for name, calories, macros, date and time) and delete for any day. Totals update because they're calculated when read. *Milestone 0.12: name, calories and macros; date and time wait for `eaten_at`.*
-- History: a calendar or date navigator showing each day's meals and totals, with edit and delete. *Milestone 0.11: the date navigator, totals and delete; edit comes with meal editing.*
+- History: a calendar or date navigator showing each day's meals and totals, with edit and delete. *Milestone 0.11: the date navigator, totals and delete; Milestone 0.12: edit.*
 - Dashboard: macro totals and progress against targets.
 - Macro targets: a default split derived from the calorie goal and stored in the goal row.
 - Settings: editing the profile adds a recalculated goal row effective from today; a manual goal override is stored with `source=manual`.
