@@ -205,9 +205,13 @@ struct EditMealView: View {
                         .onTapGesture { focus = field }
                     input
                         .frame(width: 110)
+                    // Sized to its text, never wrapped ("cal" broke onto two
+                    // lines in a fixed width on a device).
                     Text(unit ?? "")
                         .foregroundStyle(.textSecondary)
-                        .frame(width: 28, alignment: .leading)
+                        .lineLimit(1)
+                        .fixedSize()
+                        .frame(minWidth: 28, alignment: .leading)
                         .contentShape(Rectangle())
                         .accessibilityHidden(true)
                         .onTapGesture { focus = field }
