@@ -120,6 +120,9 @@ struct MealHistoryView: View {
             .refreshable {
                 await refresh()
             }
+            .navigationDestination(for: Meal.self) { meal in
+                MealDetailView(meal: meal)
+            }
             .sheet(isPresented: $showingDatePicker) {
                 HistoryDatePicker(day: shownDate) { day in
                     // VoiceOver focus returns to the date, which reads it.
@@ -263,7 +266,28 @@ struct MealHistoryView: View {
         .padding(.horizontal)
     }
 
+    /// Opens the meal's details; swipe to delete.
     private func mealRow(_ meal: Meal) -> some View {
+        NavigationLink(value: meal) {
+            mealSummary(meal)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Self.accessibilityLabel(for: meal))
+        .accessibilityHint("Shows meal details.")
+        .accessibilityAddTraits(.isButton)
+        .listRowBackground(Color.surface)
+        .swipeActions(edge: .trailing) {
+            Button(role: .destructive) {
+                Task {
+                    await deleteMeal(meal)
+                }
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+    }
+
+    private func mealSummary(_ meal: Meal) -> some View {
         rowLayout {
             VStack(alignment: .leading, spacing: 4) {
                 Text(meal.meal_name)
@@ -283,18 +307,6 @@ struct MealHistoryView: View {
                 .lineLimit(1)
         }
         .padding(.vertical, 4)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Self.accessibilityLabel(for: meal))
-        .listRowBackground(Color.surface)
-        .swipeActions(edge: .trailing) {
-            Button(role: .destructive) {
-                Task {
-                    await deleteMeal(meal)
-                }
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
-        }
     }
 
     private var emptyState: some View {

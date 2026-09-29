@@ -8,7 +8,7 @@
 
 import Foundation
 
-struct Meal: Identifiable, Codable, Equatable {
+struct Meal: Identifiable, Codable, Hashable {
     let id: Int
     let meal_name: String
     let calories: Int
