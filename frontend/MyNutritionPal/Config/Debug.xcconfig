@@ -5,4 +5,10 @@
 
 API_BASE_URL =
 
+// The project owner's signing. Other developers override both in
+// Local.xcconfig. Don't pick a team in Xcode's Signing & Capabilities: that
+// writes it into the shared project file, where it overrides this.
+DEVELOPMENT_TEAM = CDM6TKW886
+PRODUCT_BUNDLE_IDENTIFIER = com.eric.mynutrition.MyNutritionPal
+
 #include? "Local.xcconfig"

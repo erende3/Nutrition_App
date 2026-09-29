@@ -9,3 +9,9 @@
 // comment, and "$()" expands to nothing.
 
 API_BASE_URL = http:/$()/Your-Mac-Name.local:8000
+
+// Building to your own iPhone? Uncomment both lines and use your own Apple
+// development team ID and a bundle ID that's unique to you: Apple won't let
+// two teams use the same bundle ID. See docs/DEVELOPMENT.md.
+// DEVELOPMENT_TEAM = ABCDE12345
+// PRODUCT_BUNDLE_IDENTIFIER = com.yourname.MyNutritionPal
