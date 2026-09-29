@@ -350,3 +350,45 @@ def test_openapi_documents_edited_at_and_the_patch_body(client):
     update = schemas[body["$ref"].rsplit("/", 1)[-1]]
     assert set(update["properties"]) == set(EDITABLE)
     assert update["additionalProperties"] is False
+
+
+# Review fixes.
+
+@pytest.mark.parametrize("method", ["patch", "delete"])
+def test_an_id_too_large_to_store_is_a_validation_error_not_a_crash(client, method):
+    client.get("/v1/users/profile")
+
+    response = getattr(client, method)("/v1/meals/99999999999999999999", **({"json": {"calories": 1}} if method == "patch" else {}))
+
+    assert_validation(response, "path.meal_id")
+
+
+@pytest.mark.parametrize("name", ["​", "​ ‍", "a\u0000b", "Tab\there", "\u0007"])
+def test_names_that_are_invisible_or_have_control_characters_are_rejected(client, name):
+    meal_id = add_banana()
+
+    assert_validation(patch(client, meal_id, {"meal_name": name}), "body.meal_name")
+    assert stored(meal_id).meal_name == "Banana"
+
+
+def test_accented_and_emoji_names_are_kept_as_sent(client):
+    meal_id = add_banana()
+
+    assert patch(client, meal_id, {"meal_name": "Crème brûlée 🍮"}).json()["meal_name"] == "Crème brûlée 🍮"
+
+
+def test_negative_zero_is_saved_as_zero(client):
+    meal_id = add_banana()
+
+    meal = patch(client, meal_id, {"fat_g": -0.0}).json()
+
+    assert meal["fat_g"] == 0 and math.copysign(1, meal["fat_g"]) == 1
+    assert math.copysign(1, stored(meal_id).fat_g) == 1
+
+
+def test_openapi_patch_body_has_no_null_defaults_and_needs_a_field(client):
+    schemas = client.get("/v1/openapi.json").json()["components"]["schemas"]
+    update = schemas["MealUpdate"]
+
+    assert update["minProperties"] == 1
+    assert all("default" not in prop for prop in update["properties"].values())

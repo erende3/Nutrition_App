@@ -1,9 +1,11 @@
+import unicodedata
 from datetime import date, datetime
 from enum import Enum
 
 from typing import Annotated
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
@@ -215,16 +217,43 @@ class MealResource(BaseModel):
 
 # Input sanity limits for an edited meal (Milestone 0.12, E7), not nutrition
 # policy. Strict: a number sent as text, or true/false, is refused.
-MealName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+def _visible_text(name: str) -> str:
+    """No control characters, and something to see: not only invisible
+    (format) characters such as zero-width spaces."""
+    categories = [unicodedata.category(character) for character in name]
+    if "Cc" in categories:
+        raise ValueError("Use letters, numbers and punctuation only.")
+    if all(category == "Cf" or category.startswith("Z") for category in categories):
+        raise ValueError("Enter a name.")
+    return name
+
+
+MealName = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=80),
+    AfterValidator(_visible_text),
+]
 Calories = Annotated[int, Field(strict=True, ge=0, le=10_000)]
-Grams = Annotated[float, Field(strict=True, ge=0, le=1_000, allow_inf_nan=False)]
+# + 0.0 stores -0.0 as 0.0.
+Grams = Annotated[
+    float,
+    Field(strict=True, ge=0, le=1_000, allow_inf_nan=False),
+    AfterValidator(lambda grams: grams + 0.0),
+]
+
+
+def _meal_update_schema(schema: dict) -> None:
+    # The fields default to "not sent", never to null, and one is required.
+    for field in schema["properties"].values():
+        field.pop("default", None)
+    schema["minProperties"] = 1
 
 
 class MealUpdate(BaseModel):
     """An edit to a meal: any of these fields, at least one. Each is saved
     exactly as sent (the name trimmed); nothing is rescaled or recalculated."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", json_schema_extra=_meal_update_schema)
 
     # Defaults of None mark a field as not sent; sending null is refused.
     meal_name: MealName = None

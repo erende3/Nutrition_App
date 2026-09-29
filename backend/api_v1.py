@@ -10,7 +10,7 @@ from datetime import date
 from typing import Annotated, Optional
 from zoneinfo import ZoneInfo
 
-from fastapi import Depends, FastAPI, File, Form, Request, Response, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Path, Request, Response, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BeforeValidator
@@ -97,6 +97,9 @@ def _yyyy_mm_dd(value):
     return value
 
 
+# A meal id SQLite can hold; a larger one is a validation error, not a crash.
+MealId = Annotated[int, Path(ge=-(2**63), le=2**63 - 1)]
+
 # A calendar date written exactly YYYY-MM-DD (plain date also takes datetimes).
 IsoDate = Annotated[date, BeforeValidator(_yyyy_mm_dd)]
 
@@ -164,7 +167,7 @@ async def estimate_meal(
 
 @app.delete("/meals/{meal_id}", status_code=204, tags=["meals"], responses=ERROR_RESPONSES)
 def remove_meal(
-    meal_id: int,
+    meal_id: MealId,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> Response:
@@ -176,7 +179,7 @@ def remove_meal(
 
 @app.patch("/meals/{meal_id}", tags=["meals"], responses=ERROR_RESPONSES)
 def edit_meal(
-    meal_id: int,
+    meal_id: MealId,
     changes: MealUpdate,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
