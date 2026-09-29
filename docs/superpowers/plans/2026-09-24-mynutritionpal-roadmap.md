@@ -168,6 +168,17 @@ The Phase 4 navigation decision and Phase 5 screen placement, and the first Phas
 - **Accessibility:** VoiceOver reads the date as an adjustable element and hears the new date after Previous, Next or Today (after the calendar, focus returns to the date, which reads it); Next is dimmed on today. At accessibility sizes the date takes its own row and the day buttons are 64 pt.
 - **Deferred:** meal detail and edit, Settings and its placement, macro targets and progress, the calorie-goal bounds, the placeholder-description mapping, removing the unversioned routes.
 
+## Milestone 0.12: Edit a meal (added 2026-09-29)
+
+Stable meal identity, meal detail and direct editing. Plan: `docs/superpowers/plans/2026-09-28-milestone-0.12-meal-edit.md` (decisions E1–E14, design decisions M1–M13).
+
+- **Meal identity** (migration `0007`): `meals` is rebuilt with SQLite `AUTOINCREMENT`, so a deleted meal's id is never reused (before, the newest meal's id went to the next meal). Every id and value is kept; the copy seeds `sqlite_sequence`. No UUID or soft delete: a public id can be added later, additively, if sync or offline logging needs one.
+- **`edited_at`** (nullable, naive UTC like `created_at`), exposed in `MealResource`.
+- **`PATCH /v1/meals/{id}`:** name, calories, protein, carbs and fat only, each saved exactly as sent (no rescaling or recalculation), within input-sanity limits (name 1–80, calories 0–10,000, macros 0–1,000 g), which are not nutrition policy. `edited_at` moves only when a value changes. Everything else about the meal, including the AI's original estimate, stays. Last write wins.
+- **Placeholder mapping (0.10 D6):** v1 serves the old photo placeholder description as `null`; stored data untouched.
+- **iOS:** History rows open Meal Detail (swipe to delete stays); Edit opens a sheet with inline validation, a confirmation before a swipe discards changes, and typed values kept when a save fails. Meal Detail follows the meal on its loaded day and says Meal Not Found only when that day no longer has it. Pre-0.8 meals show only what they have (no source, text or assumptions).
+- **Deferred:** AI re-estimation, moving meals between dates, `eaten_at`, editing the time or description, Settings and its placement, profile and goal editing, manual goals, the calorie-goal bounds, macro targets and progress, day-level macro summary, UUID/public id, soft delete, retiring the unversioned routes, and the other items in the plan's section 9.
+
 ## Phase 1: Backend correctness
 
 **Accomplish**
@@ -300,12 +311,12 @@ The Phase 4 navigation decision and Phase 5 screen placement, and the first Phas
 ## Phase 5: Core tracking features
 
 **Accomplish**
-- Meal edit (`PATCH /v1/meals/{id}` for name, calories, macros, date and time) and delete for any day. Totals update because they're calculated when read.
+- Meal edit (`PATCH /v1/meals/{id}` for name, calories, macros, date and time) and delete for any day. Totals update because they're calculated when read. *Milestone 0.12: name, calories and macros; date and time wait for `eaten_at`.*
 - History: a calendar or date navigator showing each day's meals and totals, with edit and delete. *Milestone 0.11: the date navigator, totals and delete; edit comes with meal editing.*
 - Dashboard: macro totals and progress against targets.
 - Macro targets: a default split derived from the calorie goal and stored in the goal row.
 - Settings: editing the profile adds a recalculated goal row effective from today; a manual goal override is stored with `source=manual`.
-- Meal detail: confidence range and assumptions.
+- Meal detail: confidence range and assumptions. *Done in Milestone 0.12.*
 
 **Why now:** these are the core product features, now resting on a correct contract and a design system.
 
