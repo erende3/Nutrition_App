@@ -6,7 +6,7 @@ photo placeholder description to null.
 """
 
 import math
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -288,7 +288,8 @@ def test_non_integer_meal_id(client):
 
 
 def test_unversioned_routes_have_no_patch_and_keep_their_shape(client):
-    meal_id = add_banana(date.today())
+    # "Today" for the unversioned route is the frozen clock's date.
+    meal_id = add_banana(EDITED_AT.date())
     legacy_before = client.get("/meals/today").json()[0]
 
     assert client.patch(f"/meals/{meal_id}", json={"calories": 1}).status_code == 405
