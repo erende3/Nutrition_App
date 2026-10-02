@@ -2,5 +2,12 @@
 //
 // There is no production backend yet, so a Release build has no server
 // address and says so at launch.
+//
+// Release deliberately doesn't include Local.xcconfig, so a developer's local
+// server address and signing never reach a Release or Archive build.
 
 API_BASE_URL =
+
+// The project owner's signing (see Debug.xcconfig).
+DEVELOPMENT_TEAM = CDM6TKW886
+PRODUCT_BUNDLE_IDENTIFIER = com.eric.mynutrition.MyNutritionPal

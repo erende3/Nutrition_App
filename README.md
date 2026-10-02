@@ -2,9 +2,11 @@
 
 AI-powered calorie and nutrition tracker: a SwiftUI iOS app (`frontend/`) and a FastAPI backend (`backend/`).
 
+**New here?** Follow [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): one path from `git clone` to the app running on your own iPhone against a backend on your own Mac. This README is the reference.
+
 ## Backend
 
-Requires Python 3.11. Keep the repository outside iCloud-synced folders (such as `~/Desktop` or `~/Documents` with iCloud Drive enabled); iCloud can stall file reads for minutes, which freezes imports and the server.
+Requires Python 3.11 or newer. 3.11 is the baseline, and the commands below use it; 3.14 has also been tested. macOS's built-in `python3` (3.9) is too old. Keep the repository outside iCloud-synced folders (such as `~/Desktop` or `~/Documents` with iCloud Drive enabled); iCloud can stall file reads for minutes, which freezes imports and the server.
 
 ```bash
 cd backend
@@ -188,9 +190,12 @@ The app follows the phone's light or dark appearance. Colors are named sets in `
 
 ```bash
 cd frontend/MyNutritionPal
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild test \
-  -scheme MyNutritionPal -destination 'platform=iOS Simulator,name=iPhone 16' \
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+xcrun simctl list devices available   # pick an iPhone simulator on iOS 18.5 or later
+SIMULATOR='iPhone 16e'                 # ...and use its name here
+xcodebuild test \
+  -scheme MyNutritionPal -destination "platform=iOS Simulator,name=$SIMULATOR" \
   -only-testing:MyNutritionPalTests API_BASE_URL=
 ```
 
-Use a simulator with iOS 18.5 or later. The unit tests use a stubbed network. Xcode launches the app itself as the test host, though, and the app makes its usual launch requests (reading the profile, then today's summary and meals) to the configured server. `API_BASE_URL=` on the command line leaves the address empty, so the test host makes no requests.
+Any iPhone simulator on iOS 18.5 or later works; simulator names change between Xcode versions, so use one from the list. The unit tests use a stubbed network. Xcode launches the app itself as the test host, though, and the app makes its usual launch requests (reading the profile, then today's summary and meals) to the configured server. `API_BASE_URL=` on the command line leaves the address empty, so the test host makes no requests.
